@@ -179,6 +179,8 @@ func main() {
 	if inputs, targets, err = mnist.Load(trainOn, loc, dt); err != nil {
 		log.Fatal(err)
 	}
+	fmt.Println("Train inputs:", inputs.Shape())
+	fmt.Println("Train data:", targets.Shape())
 
 	// the data is in (numExamples, 784).
 	// In order to use a convnet, we need to massage the data
