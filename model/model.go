@@ -1,16 +1,15 @@
 package main
 
 import (
-	"encoding/csv"
 	"errors"
 	"fmt"
 	"log"
 	"math"
 	"math/rand"
-	"os"
-	"strconv"
 	"time"
 
+	"encoding/binary"
+	"os"
 	"gonum.org/v1/gonum/floats"
 	"gonum.org/v1/gonum/mat"
 )
@@ -38,10 +37,111 @@ type neuralNetConfig struct {
 	learningRate  float64
 }
 
+
+
+//++++++++++++++++++++++++++++++++++++++
+func readIDXFile(filename string) []byte {
+	file, err := os.Open(filename)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	// Read magic number
+	var magicNumber int32
+	if err := binary.Read(file, binary.BigEndian, &magicNumber); err != nil {
+		log.Fatal("could not read magic number:", err)
+	}
+	if magicNumber != 2049 && magicNumber != 2051 {
+		log.Fatalf("unexpected magic number %d", magicNumber)
+	}
+
+	// Read number of items
+	var numItems int32
+	if err := binary.Read(file, binary.BigEndian, &numItems); err != nil {
+		log.Fatal("could not read number of items:", err)
+	}
+
+	// Read label or image data
+	switch magicNumber {
+	case 2049: // Labels file
+		labels := make([]byte, numItems)
+		if _, err := file.Read(labels); err != nil {
+			log.Fatal("could not read labels data:", err)
+		}
+		return labels
+	case 2051: // Images file
+		var numRows, numCols int32
+		if err := binary.Read(file, binary.BigEndian, &numRows); err != nil {
+			log.Fatal("could not read number of rows:", err)
+		}
+		if err := binary.Read(file, binary.BigEndian, &numCols); err != nil {
+			log.Fatal("could not read number of columns:", err)
+		}
+
+		imageSize := numRows * numCols
+		images := make([]byte, numItems*imageSize)
+		if _, err := file.Read(images); err != nil {
+			log.Fatal("could not read images data:", err)
+		}
+		return images
+	default:
+		log.Fatalf("unknown magic number %d", magicNumber)
+	}
+
+	return nil
+}
+
+// loadMNISTDataset loads the MNIST dataset from IDX files and returns images and labels.
+func loadMNISTDataset(imagesFile, labelsFile string) ([][]float64, []int) {
+	// Read images and labels from IDX files
+	imagesData := readIDXFile(imagesFile)
+	labelsData := readIDXFile(labelsFile)
+
+	// Prepare the dataset
+	numItems := len(labelsData)
+	numRows := 28
+	numCols := 28
+	imageSize := numRows * numCols
+
+	images := make([][]float64, numItems)
+	labels := make([]int, numItems)
+
+	// Process images and labels
+	for i := 0; i < numItems; i++ {
+		images[i] = make([]float64, imageSize)
+		labels[i] = int(labelsData[i])
+
+		for j := 0; j < imageSize; j++ {
+			images[i][j] = float64(imagesData[i*imageSize+j]) / 255.0 // Normalize pixel values
+		}
+	}
+
+	return images, labels
+}
+
+
+
+//++++++++++++++++++++++++++++++++++++++
+
+
 func main() {
 
 	// Form the training matrices.
-	inputs, labels := makeInputsAndLabels("data/train.csv")
+	trainImagesFile := "data/train-images-idx3-ubyte"
+	trainLabelsFile := "data/train-labels-idx1-ubyte"
+	testImagesFile := "data/t10k-images-idx3-ubyte"
+	testLabelsFile := "data/t10k-labels-idx1-ubyte"
+
+	// Load training and test datasets
+	trainImages, trainLabels := loadMNISTDataset(trainImagesFile, trainLabelsFile)
+	testImages, testLabels := loadMNISTDataset(testImagesFile, testLabelsFile)
+
+	// Example usage
+	fmt.Println("Training images count:", len(trainImages))
+	fmt.Println("Training labels count:", len(trainLabels))
+	fmt.Println("Test images count:", len(testImages))
+	fmt.Println("Test labels count:", len(testLabels))
 
 	// Define our network architecture and learning parameters.
 	config := neuralNetConfig{
@@ -49,51 +149,56 @@ func main() {
 		outputNeurons: 10,
 		hiddenNeurons1: 64,
 		hiddenNeurons2: 64,
-		numEpochs:     1000,
+		numEpochs:     10,
 		learningRate:  0.01,
 	}
 
 	// Train the neural network.
 	network := newNetwork(config)
-	if err := network.train(inputs, labels); err != nil {
+	trainInputs := mat.NewDense(len(trainImages), 28*28, nil)
+	trainLabelsMat := mat.NewDense(len(trainLabels), 10, nil)
+	for i := range trainImages {
+		for j := range trainImages[i] {
+			trainInputs.Set(i, j, trainImages[i][j])
+		}
+		trainLabelsMat.Set(i, trainLabels[i], 1)
+	}
+	if err := network.train(trainInputs, trainLabelsMat); err != nil {
 		log.Fatal(err)
 	}
 
-	// Form the testing matrices.
-	testInputs, testLabels := makeInputsAndLabels("data/test.csv")
-
 	// Make the predictions using the trained model.
+	testInputs := mat.NewDense(len(testImages), 28*28, nil)
+	for i := range testImages {
+		for j := range testImages[i] {
+			testInputs.Set(i, j, testImages[i][j])
+		}
+	}
 	predictions, err := network.predict(testInputs)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// Calculate the accuracy of our model.
-	var truePosNeg int
+	var correctPredictions float64
 	numPreds, _ := predictions.Dims()
 	for i := 0; i < numPreds; i++ {
+		// Find the index of the maximum value in both prediction and actual labels.
+		predictedLabel := floats.MaxIdx(predictions.RawRowView(i))
+		actualLabel := testLabels[i]
 
-		// Get the label.
-		labelRow := mat.Row(nil, i, testLabels)
-		var prediction int
-		for idx, label := range labelRow {
-			if label == 1.0 {
-				prediction = idx
-				break
-			}
-		}
-
-		// Accumulate the true positive/negative count.
-		if predictions.At(i, prediction) == floats.Max(mat.Row(nil, i, predictions)) {
-			truePosNeg++
+		// Check if prediction matches the actual label.
+		if predictedLabel == actualLabel {
+			correctPredictions++
 		}
 	}
 
-	// Calculate the accuracy (subset accuracy).
-	accuracy := float64(truePosNeg) / float64(numPreds)
+	// Calculate accuracy.
+	accuracy := correctPredictions / float64(numPreds)
 
 	// Output the Accuracy value to standard out.
 	fmt.Printf("\nAccuracy = %0.2f\n\n", accuracy)
+
 }
 
 // NewNetwork initializes a new neural network.
@@ -162,6 +267,10 @@ func (nn *neuralNet) backpropagate(x, y, wHidden1, bHidden1, wHidden2, bHidden2,
 	for i := 0; i < nn.config.numEpochs; i++ {
 
 		// Complete the feed forward process.
+		fmt.Println("Epoch num:", i)
+
+		
+
 		hiddenLayerInput1 := new(mat.Dense)
 		hiddenLayerInput1.Mul(x, wHidden1)
 		addBHidden1 := func(_, col int, v float64) float64 { return v + bHidden1.At(0, col) }
@@ -169,6 +278,8 @@ func (nn *neuralNet) backpropagate(x, y, wHidden1, bHidden1, wHidden2, bHidden2,
 
 		hiddenLayerActivations1 := new(mat.Dense)
 		applyReLU := func(_, _ int, v float64) float64 { return relu(v) }
+
+
 		hiddenLayerActivations1.Apply(applyReLU, hiddenLayerInput1)
 
 		hiddenLayerInput2 := new(mat.Dense)
@@ -183,7 +294,8 @@ func (nn *neuralNet) backpropagate(x, y, wHidden1, bHidden1, wHidden2, bHidden2,
 		outputLayerInput.Mul(hiddenLayerActivations2, wOut)
 		addBOut := func(_, col int, v float64) float64 { return v + bOut.At(0, col) }
 		outputLayerInput.Apply(addBOut, outputLayerInput)
-		output.Apply(applySoftmax, outputLayerInput)
+		applySigmoid := func(_, _ int, v float64) float64 { return sigmoid(v) }
+		output.Apply(applySigmoid, outputLayerInput)
 
 		// Complete the backpropagation.
 		networkError := new(mat.Dense)
@@ -288,8 +400,9 @@ func (nn *neuralNet) predict(x *mat.Dense) (*mat.Dense, error) {
 	outputLayerInput := new(mat.Dense)
 	outputLayerInput.Mul(hiddenLayerActivations2, nn.wOut)
 	addBOut := func(_, col int, v float64) float64 { return v + nn.bOut.At(0, col) }
+	applySigmoid := func(_, _ int, v float64) float64 { return sigmoid(v) }
 	outputLayerInput.Apply(addBOut, outputLayerInput)
-	output.Apply(applySoftmax, outputLayerInput)
+	output.Apply(applySigmoid, outputLayerInput)
 
 	return output, nil
 }
@@ -312,28 +425,45 @@ func reluPrime(_, _ int, x float64) float64 {
 	return 0
 }
 
-// softmax implements the softmax function
-// for use in activation functions.
-func softmax(_, col int, v float64, output *mat.Dense) float64 {
-	cols := output.RawMatrix().Cols
-	max := output.At(0, col)
-	for i := 1; i < cols; i++ {
-		if output.At(0, i) > max {
-			max = output.At(0, i)
-		}
-	}
-	sum := 0.0
-	for i := 0; i < cols; i++ {
-		sum += math.Exp(output.At(0, i) - max)
-	}
-	return math.Exp(v-max) / sum
+func sigmoid(x float64) float64 {
+	return 1.0 / (1.0 + math.Exp(-x))
 }
 
-// softmaxPrime implements the derivative
-// of the softmax function for backpropagation.
-func softmaxPrime(x float64) float64 {
-	return x * (1 - x)
+// sigmoidPrime implements the derivative
+// of the sigmoid function for backpropagation.
+func sigmoidPrime(x float64) float64 {
+	return sigmoid(x) * (1.0 - sigmoid(x))
 }
+
+// softmax implements the softmax function
+// for use in activation functions.
+// applySoftmax applies the softmax function across a matrix row.
+func softmax(_, col int, v float64, output *mat.Dense) float64 {
+    // Find the maximum value in the row for numerical stability
+    max := output.RawRowView(col)[0]
+    for _, val := range output.RawRowView(col) {
+        if val > max {
+            max = val
+        }
+    }
+
+    // Calculate sum of exponentials for normalization
+    var sum float64
+    for _, val := range output.RawRowView(col) {
+        sum += math.Exp(val - max)
+    }
+
+    // Calculate softmax value for the current element
+    softmaxVal := math.Exp(v - max) / sum
+
+    return softmaxVal
+}
+
+// softmaxPrime computes the derivative of the softmax function.
+func softmaxPrime(x float64) float64 {
+    return x * (1 - x)
+}
+
 
 // sumAlongAxis sums a matrix along a
 // particular dimension, preserving the
@@ -366,65 +496,4 @@ func sumAlongAxis(axis int, m *mat.Dense) (*mat.Dense, error) {
 	return output, nil
 }
 
-func makeInputsAndLabels(fileName string) (*mat.Dense, *mat.Dense) {
-	// Open the dataset file.
-	f, err := os.Open(fileName)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer f.Close()
 
-	// Create a new CSV reader reading from the opened file.
-	reader := csv.NewReader(f)
-	reader.FieldsPerRecord = 785 // 784 inputs + 1 label
-
-	// Read in all of the CSV records
-	rawCSVData, err := reader.ReadAll()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// inputsData and labelsData will hold all the
-	// float values that will eventually be
-	// used to form matrices.
-	inputsData := make([]float64, 28*28*len(rawCSVData))
-	labelsData := make([]float64, 10*len(rawCSVData))
-
-	// Will track the current index of matrix values.
-	var inputsIndex int
-	var labelsIndex int
-
-	// Sequentially move the rows into a slice of floats.
-	for idx, record := range rawCSVData {
-
-		// Skip the header row.
-		if idx == 0 {
-			continue
-		}
-
-		// Loop over the float columns.
-		for i, val := range record {
-
-			// Convert the value to a float.
-			parsedVal, err := strconv.ParseFloat(val, 64)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			// Add to the labelsData if relevant.
-			if i == 0 {
-				label := int(parsedVal)
-				labelsData[labelsIndex+label] = 1.0
-				labelsIndex += 10
-				continue
-			}
-
-			// Add the float value to the slice of floats.
-			inputsData[inputsIndex] = parsedVal / 255.0 // Normalize input
-			inputsIndex++
-		}
-	}
-	inputs := mat.NewDense(len(rawCSVData)-1, 28*28, inputsData)
-	labels := mat.NewDense(len(rawCSVData)-1, 10, labelsData)
-	return inputs, labels
-}
