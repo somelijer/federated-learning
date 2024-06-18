@@ -11,7 +11,6 @@ import (
 	"runtime/pprof"
 	"syscall"
 
-	"net/http"
 	_ "net/http/pprof"
 
 	"github.com/pkg/errors"
@@ -46,116 +45,135 @@ func parseDtype() {
 	}
 }
 
-type convnet struct {
-	g                  *G.ExprGraph
-	w0, w1, w2, w3, w4 *G.Node // weights. the number at the back indicates which layer it's used for
-	d0, d1, d2, d3     float64 // dropout probabilities
-
-	out *G.Node
+type feedforwardNet struct {
+	g      *G.ExprGraph
+	w0, w1, w2, w3 *G.Node // weights
+	out    *G.Node
 }
 
-func newConvNet(g *G.ExprGraph) *convnet {
-	w0 := G.NewTensor(g, dt, 4, G.WithShape(32, 1, 3, 3), G.WithName("w0"), G.WithInit(G.GlorotN(1.0)))
-	w1 := G.NewTensor(g, dt, 4, G.WithShape(64, 32, 3, 3), G.WithName("w1"), G.WithInit(G.GlorotN(1.0)))
-	w2 := G.NewTensor(g, dt, 4, G.WithShape(128, 64, 3, 3), G.WithName("w2"), G.WithInit(G.GlorotN(1.0)))
-	w3 := G.NewMatrix(g, dt, G.WithShape(128*3*3, 625), G.WithName("w3"), G.WithInit(G.GlorotN(1.0)))
-	w4 := G.NewMatrix(g, dt, G.WithShape(625, 10), G.WithName("w4"), G.WithInit(G.GlorotN(1.0)))
-	return &convnet{
+func newFeedForwardNet(g *G.ExprGraph) *feedforwardNet {
+	w0 := G.NewMatrix(g, dt, G.WithShape(28*28, 512), G.WithName("w0"), G.WithInit(G.GlorotN(1.0)))
+	w1 := G.NewMatrix(g, dt, G.WithShape(512, 256), G.WithName("w1"), G.WithInit(G.GlorotN(1.0)))
+	w2 := G.NewMatrix(g, dt, G.WithShape(256, 128), G.WithName("w2"), G.WithInit(G.GlorotN(1.0)))
+	w3 := G.NewMatrix(g, dt, G.WithShape(128, 10), G.WithName("w3"), G.WithInit(G.GlorotN(1.0)))
+
+	return &feedforwardNet{
 		g:  g,
 		w0: w0,
 		w1: w1,
 		w2: w2,
 		w3: w3,
-		w4: w4,
-
-		d0: 0.2,
-		d1: 0.2,
-		d2: 0.2,
-		d3: 0.55,
 	}
 }
 
-func (m *convnet) learnables() G.Nodes {
-	return G.Nodes{m.w0, m.w1, m.w2, m.w3, m.w4}
+func (m *feedforwardNet) learnables() G.Nodes {
+	return G.Nodes{m.w0, m.w1, m.w2, m.w3}
 }
 
-// This function is particularly verbose for educational reasons. In reality, you'd wrap up the layers within a layer struct type and perform per-layer activations
-func (m *convnet) fwd(x *G.Node) (err error) {
-	var c0, c1, c2, fc *G.Node
-	var a0, a1, a2, a3 *G.Node
-	var p0, p1, p2 *G.Node
-	var l0, l1, l2, l3 *G.Node
+func calculateAccuracy(g *G.ExprGraph, inputs, targets tensor.Tensor, m *feedforwardNet, bs int) (float64, error) {
+	numExamples := inputs.Shape()[0]
+	correct := 0
+	total := 0
 
-	// LAYER 0
-	// here we convolve with stride = (1, 1) and padding = (1, 1),
-	// which is your bog standard convolution for convnet
-	if c0, err = G.Conv2d(x, m.w0, tensor.Shape{3, 3}, []int{1, 1}, []int{1, 1}, []int{1, 1}); err != nil {
-		return errors.Wrap(err, "Layer 0 Convolution failed")
-	}
-	if a0, err = G.Rectify(c0); err != nil {
-		return errors.Wrap(err, "Layer 0 activation failed")
-	}
-	if p0, err = G.MaxPool2D(a0, tensor.Shape{2, 2}, []int{0, 0}, []int{2, 2}); err != nil {
-		return errors.Wrap(err, "Layer 0 Maxpooling failed")
-	}
-	log.Printf("p0 shape %v", p0.Shape())
-	if l0, err = G.Dropout(p0, m.d0); err != nil {
-		return errors.Wrap(err, "Unable to apply a dropout")
+	x := G.NewMatrix(g, dt, G.WithShape(bs, 28*28), G.WithName("x"))
+	y := G.NewMatrix(g, dt, G.WithShape(bs, 10), G.WithName("y"))
+
+	if err := m.fwd(x); err != nil {
+		return 0, err
 	}
 
-	// Layer 1
-	if c1, err = G.Conv2d(l0, m.w1, tensor.Shape{3, 3}, []int{1, 1}, []int{1, 1}, []int{1, 1}); err != nil {
-		return errors.Wrap(err, "Layer 1 Convolution failed")
-	}
-	if a1, err = G.Rectify(c1); err != nil {
-		return errors.Wrap(err, "Layer 1 activation failed")
-	}
-	if p1, err = G.MaxPool2D(a1, tensor.Shape{2, 2}, []int{0, 0}, []int{2, 2}); err != nil {
-		return errors.Wrap(err, "Layer 1 Maxpooling failed")
-	}
-	if l1, err = G.Dropout(p1, m.d1); err != nil {
-		return errors.Wrap(err, "Unable to apply a dropout to layer 1")
+	vm := G.NewTapeMachine(g)
+	defer vm.Close()
+
+	for i := 0; i < numExamples; i += bs {
+		end := i + bs
+		if end > numExamples {
+			end = numExamples
+		}
+
+		xVal, err := inputs.Slice(G.S(i, end))
+		if err != nil {
+			return 0, err
+		}
+
+		yVal, err := targets.Slice(G.S(i, end))
+		if err != nil {
+			return 0, err
+		}
+
+		if err = xVal.(*tensor.Dense).Reshape(end-i, 28*28); err != nil {
+			return 0, err
+		}
+
+		G.Let(x, xVal)
+		G.Let(y, yVal)
+		if err = vm.RunAll(); err != nil {
+			return 0, err
+		}
+
+		predictions := m.out.Value().Data().([]float64)
+		actuals := yVal.Data().([]float64)
+
+		for j := 0; j < end-i; j++ {
+			predIdx := argmax(predictions[j*10 : (j+1)*10])
+			actualIdx := argmax(actuals[j*10 : (j+1)*10])
+			if predIdx == actualIdx {
+				correct++
+			}
+			total++
+		}
+
+		vm.Reset()
 	}
 
-	// Layer 2
-	if c2, err = G.Conv2d(l1, m.w2, tensor.Shape{3, 3}, []int{1, 1}, []int{1, 1}, []int{1, 1}); err != nil {
-		return errors.Wrap(err, "Layer 2 Convolution failed")
+	return float64(correct) / float64(total), nil
+}
+
+func argmax(slice []float64) int {
+	maxIdx := 0
+	maxVal := slice[0]
+	for i, val := range slice {
+		if val > maxVal {
+			maxVal = val
+			maxIdx = i
+		}
 	}
-	if a2, err = G.Rectify(c2); err != nil {
-		return errors.Wrap(err, "Layer 2 activation failed")
+	return maxIdx
+}
+
+func (m *feedforwardNet) fwd(x *G.Node) (err error) {
+	var l0, a0, l1, a1, l2, a2, l3 *G.Node
+
+	bs := x.Shape()[0]
+	x = G.Must(G.Reshape(x, tensor.Shape{bs, 28*28}))
+
+	if l0, err = G.Mul(x, m.w0); err != nil {
+		return errors.Wrap(err, "Unable to multiply x and w0")
 	}
-	if p2, err = G.MaxPool2D(a2, tensor.Shape{2, 2}, []int{0, 0}, []int{2, 2}); err != nil {
-		return errors.Wrap(err, "Layer 2 Maxpooling failed")
+	if a0, err = G.Rectify(l0); err != nil {
+		return errors.Wrap(err, "Unable to activate l0")
 	}
 
-	var r2 *G.Node
-	b, c, h, w := p2.Shape()[0], p2.Shape()[1], p2.Shape()[2], p2.Shape()[3]
-	if r2, err = G.Reshape(p2, tensor.Shape{b, c * h * w}); err != nil {
-		return errors.Wrap(err, "Unable to reshape layer 2")
+	if l1, err = G.Mul(a0, m.w1); err != nil {
+		return errors.Wrap(err, "Unable to multiply a0 and w1")
 	}
-	log.Printf("r2 shape %v", r2.Shape())
-	if l2, err = G.Dropout(r2, m.d2); err != nil {
-		return errors.Wrap(err, "Unable to apply a dropout on layer 2")
+	if a1, err = G.Rectify(l1); err != nil {
+		return errors.Wrap(err, "Unable to activate l1")
 	}
 
-	// Layer 3
-	if fc, err = G.Mul(l2, m.w3); err != nil {
-		return errors.Wrapf(err, "Unable to multiply l2 and w3")
+	if l2, err = G.Mul(a1, m.w2); err != nil {
+		return errors.Wrap(err, "Unable to multiply a1 and w2")
 	}
-	if a3, err = G.Rectify(fc); err != nil {
-		return errors.Wrapf(err, "Unable to activate fc")
-	}
-	if l3, err = G.Dropout(a3, m.d3); err != nil {
-		return errors.Wrapf(err, "Unable to apply a dropout on layer 3")
+	if a2, err = G.Rectify(l2); err != nil {
+		return errors.Wrap(err, "Unable to activate l2")
 	}
 
-	// output decode
-	var out *G.Node
-	if out, err = G.Mul(l3, m.w4); err != nil {
-		return errors.Wrapf(err, "Unable to multiply l3 and w4")
+	if l3, err = G.Mul(a2, m.w3); err != nil {
+		return errors.Wrap(err, "Unable to multiply a2 and w3")
 	}
-	m.out, err = G.SoftMax(out)
-	return
+
+	m.out, err = G.SoftMax(l3)
+	return err
 }
 
 func main() {
@@ -163,7 +181,6 @@ func main() {
 	parseDtype()
 	rand.Seed(1337)
 
-	// intercept Ctrl+C
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	doneChan := make(chan bool, 1)
@@ -171,51 +188,31 @@ func main() {
 	var inputs, targets tensor.Tensor
 	var err error
 
-	go func() {
-		log.Println(http.ListenAndServe("localhost:6060", nil))
-	}()
-
-	trainOn := *dataset
-	if inputs, targets, err = mnist.Load(trainOn, loc, dt); err != nil {
+	if inputs, targets, err = mnist.Load("test", loc, dt); err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println("Train inputs:", inputs.Shape())
 	fmt.Println("Train data:", targets.Shape())
 
-	// the data is in (numExamples, 784).
-	// In order to use a convnet, we need to massage the data
-	// into this format (batchsize, numberOfChannels, height, width).
-	//
-	// This translates into (numExamples, 1, 28, 28).
-	//
-	// This is because the convolution operators actually understand height and width.
-	//
-	// The 1 indicates that there is only one channel (MNIST data is black and white).
 	numExamples := inputs.Shape()[0]
 	bs := *batchsize
-	// todo - check bs not 0
-
-	if err := inputs.Reshape(numExamples, 1, 28, 28); err != nil {
+	if err := inputs.Reshape(numExamples, 28*28); err != nil {
 		log.Fatal(err)
 	}
+	fmt.Println("Train inputs reshaped:", inputs.Shape())
+
 	g := G.NewGraph()
-	x := G.NewTensor(g, dt, 4, G.WithShape(bs, 1, 28, 28), G.WithName("x"))
+	x := G.NewMatrix(g, dt, G.WithShape(bs, 28*28), G.WithName("x"))
 	y := G.NewMatrix(g, dt, G.WithShape(bs, 10), G.WithName("y"))
-	m := newConvNet(g)
+	m := newFeedForwardNet(g)
 	if err = m.fwd(x); err != nil {
 		log.Fatalf("%+v", err)
 	}
-
-	// Note: the correct losses should look like that
-	//
-	// The losses that are not commented out is used to test the stabilization function of Gorgonia.
-	//losses := G.Must(G.HadamardProd(G.Must(G.Neg(G.Must(G.Log(m.out)))), y))
 
 	losses := G.Must(G.Log(G.Must(G.HadamardProd(m.out, y))))
 	cost := G.Must(G.Mean(losses))
 	cost = G.Must(G.Neg(cost))
 
-	// we wanna track costs
 	var costVal G.Value
 	G.Read(cost, &costVal)
 
@@ -223,20 +220,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// debug
-	// ioutil.WriteFile("fullGraph.dot", []byte(g.ToDot()), 0644)
-	// log.Printf("%v", prog)
-	// logger := log.New(os.Stderr, "", 0)
-	// vm := gorgonia.NewTapeMachine(g, gorgonia.BindDualValues(m.learnables()...), gorgonia.WithLogger(logger), gorgonia.WithWatchlist())
-
 	prog, locMap, _ := G.Compile(g)
-	//log.Printf("%v", prog)
-
 	vm := G.NewTapeMachine(g, G.WithPrecompiled(prog, locMap), G.BindDualValues(m.learnables()...))
-	solver := G.NewRMSPropSolver(G.WithBatchSize(float64(bs)))
+	solver := G.NewAdamSolver(G.WithBatchSize(float64(bs)), G.WithLearnRate(0.0001))
 	defer vm.Close()
-	// pprof
-	// handlePprof(sigChan, doneChan)
 
 	var profiling bool
 	if *cpuprofile != "" {
@@ -278,7 +265,7 @@ func main() {
 			if yVal, err = targets.Slice(G.S(start, end)); err != nil {
 				log.Fatal("Unable to slice y")
 			}
-			if err = xVal.(*tensor.Dense).Reshape(bs, 1, 28, 28); err != nil {
+			if err = xVal.(*tensor.Dense).Reshape(bs, 28*28); err != nil {
 				log.Fatalf("Unable to reshape %v", err)
 			}
 
@@ -295,6 +282,13 @@ func main() {
 		}
 		log.Printf("Epoch %d | cost %v", i, costVal)
 
+		if i%5 == 0 {
+			accuracy, err := calculateAccuracy(g, inputs, targets, m, bs)
+			if err != nil {
+				log.Fatalf("Failed to calculate accuracy: %v", err)
+			}
+			log.Printf("Epoch %d | Training Accuracy: %.2f%%", i, accuracy*100)
+		}
 	}
 }
 
