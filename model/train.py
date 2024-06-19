@@ -1,5 +1,6 @@
 import ast
 import os
+import time
 import numpy as np
 import torch as T
 import requests
@@ -105,11 +106,26 @@ def main():
 
     num_items = 30000
     url = f'http://localhost:8080/mnist_data?num={num_items}'
-    response = requests.get(url)
+
+    # Ping the server every second for 15 seconds
+    max_retries = 15
+    for _ in range(max_retries):
+        try:
+            response = requests.get(url)
+            if response.status_code == 200:
+                break
+        except requests.exceptions.ConnectionError:
+            print("Server is not up yet, retrying...")
+        time.sleep(1)
+    else:
+        print("Server did not respond within 15 seconds. Exiting.")
+        return
 
     if response.status_code != 200:
         print(f"Error fetching data from server: {response.status_code}")
         return
+
+
 
     data = response.json()
     images_data = data['images']
@@ -141,7 +157,7 @@ def main():
     print("\nStarting training")
     net.train()
 
-    load_model_from_text(net, "model/mnist_model.txt")
+    load_model_from_text(net, "model\mnist_model_best_train.txt")
     
     for epoch in range(max_epochs):
         epoch_loss = 0

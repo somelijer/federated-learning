@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
+	"sync"
 )
 
 var (
@@ -108,6 +110,8 @@ func handleMNISTDataRequest(w http.ResponseWriter, r *http.Request) {
 		mnistResponse.Labels[i] = int(labels[i])
 	}
 
+	fmt.Printf("Sending data for training")
+
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(mnistResponse); err != nil {
 		http.Error(w, fmt.Sprintf("Error encoding response: %v", err), http.StatusInternalServerError)
@@ -115,7 +119,24 @@ func handleMNISTDataRequest(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func main() {
+func runPythonScript(wg *sync.WaitGroup) {
+	defer wg.Done()
+	cmd := exec.Command("python", "train.py")
+
+	// Combine stdout and stderr
+	cmd.Stdout = log.Writer()
+	cmd.Stderr = log.Writer()
+
+	// Run the command
+	err := cmd.Run()
+	if err != nil {
+		log.Fatalf("cmd.Run() failed with %s\n", err)
+	}
+	fmt.Printf("Python script finished executing")
+}
+
+func startServer(wg *sync.WaitGroup) {
+	defer wg.Done()
 	http.HandleFunc("/mnist_data", handleMNISTDataRequest)
 
 	port := ":8080"
@@ -123,4 +144,16 @@ func main() {
 	if err := http.ListenAndServe(port, nil); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func main() {
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+
+	go runPythonScript(&wg)
+	go startServer(&wg)
+
+	wg.Wait()
+	fmt.Println("Both server and Python script have finished executing.")
 }
