@@ -14,14 +14,22 @@ type Weights struct {
 	WeightsArray []float64
 }
 
+type LocalWeights struct {
+	weights Weights
+}
+
+type RemoteWeights struct {
+	weights Weights
+}
+
 type TrainingActor struct {
-	aggregatorPID *actor.PID
+	commActorPID *actor.PID
 }
 
 type AggregatorActor struct {
-	weights      Weights
+	localWeights LocalWeights
 	count        int
-	commActorPID *actor.PID
+	trainingPID  *actor.PID
 }
 
 type CommunicationActor struct {
@@ -29,51 +37,62 @@ type CommunicationActor struct {
 	aggregatorPID *actor.PID
 }
 
-type CommPIDMsg struct {
-	CommPID *actor.PID
+type TrainingPIDMsg struct {
+	TrainingPID *actor.PID
 }
 
 func (state *TrainingActor) Receive(ctx actor.Context) {
 	switch msg := ctx.Message().(type) {
-	case Weights:
+	case LocalWeights:
 		fmt.Println("Training Actor received weights")
+		fmt.Println("Training Actor weights: ", msg.weights.WeightsArray)
 		time.Sleep(1 * time.Second) //Sluzi da simulira obradu, da ne bi imali rafalni ispis u konzoli
-		ctx.Send(state.aggregatorPID, msg)
+		ctx.Send(state.commActorPID, msg)
 	}
 }
 
 func (state *AggregatorActor) Receive(ctx actor.Context) {
 	switch msg := ctx.Message().(type) {
-	case Weights:
+	case RemoteWeights:
 		fmt.Println("Aggregator received weights")
-		time.Sleep(1 * time.Second) //Sluzi da simulira obradu, da ne bi imali rafalni ispis u konzoli
+
 		if state.count == 0 {
-			state.weights = msg
+			state.localWeights.weights = msg.weights
 		} else {
-			state.weights = averageWeights(state.weights, msg, state.count)
+			state.localWeights.weights = averageWeights(state.localWeights.weights, msg.weights, state.count)
 		}
 		state.count++
-		fmt.Println("Received weights: ", msg)
-		fmt.Println("Average weights: ", state.weights)
-		ctx.Send(state.commActorPID, state.weights)
-	case CommPIDMsg:
-		state.commActorPID = msg.CommPID
-		fmt.Println("Aggregator received commActorPID")
+		fmt.Println("Received weights: ", msg.weights.WeightsArray)
+		fmt.Println("Average weights: ", state.localWeights.weights.WeightsArray)
+		time.Sleep(1 * time.Second) //Sluzi da simulira obradu, da ne bi imali rafalni ispis u konzoli
+		ctx.Send(state.trainingPID, state.localWeights)
+	case TrainingPIDMsg:
+		state.trainingPID = msg.TrainingPID
+		fmt.Println("Aggregator received trainingActorPID")
 
 	}
 }
 
 func (state *CommunicationActor) Receive(ctx actor.Context) {
-	switch /*msg :=*/ ctx.Message().(type) {
-	case Weights:
-		fmt.Println("Communication actor received weights from aggregator")
-		time.Sleep(1 * time.Second)              //Sluzi da simulira obradu, da ne bi imali rafalni ispis u konzoli
-		randomWeights := generateRandomWeights() //Ovo za sada simulira tezine dobavljene iz ostalih Aktorskih sistema
-		ctx.Send(state.aggregatorPID, randomWeights)
+	switch msg := ctx.Message().(type) {
+	case LocalWeights:
+		fmt.Println("Communication actor received weights from training actor")
+		//TODO
+		//Ovde implementirati logiku za slanje tezina ostalim klasterima
+		fmt.Println("Send weights to other systems")
 
-		// 	state.broadcastWeights(msg)
-		// default:
-		// 	state.receiveWeights(ctx)
+		//Ovaj deo za sada simulira da smo dobili poruku tipa RemoteWeights dok ne implementiramo logiku za dobavljanje tezina iz ostalih klastera
+		randomWeights := generateRandomWeights()
+		var remoteWeights RemoteWeights
+		remoteWeights.weights = randomWeights
+		fmt.Println("Comm send weights: ", remoteWeights.weights)
+		time.Sleep(1 * time.Second) //Sluzi da simulira obradu, da ne bi imali rafalni ispis u konzoli
+		ctx.Send(state.aggregatorPID, remoteWeights)
+
+	case RemoteWeights:
+		var localWeights LocalWeights
+		localWeights.weights = msg.weights
+		ctx.Send(state.aggregatorPID, localWeights)
 	}
 }
 
@@ -147,17 +166,20 @@ func main() {
 	})
 	commPID := rootContext.Spawn(commProps)
 
-	rootContext.Send(aggregatorPID, CommPIDMsg{CommPID: commPID})
-
 	trainingProps := actor.PropsFromProducer(func() actor.Actor {
-		return &TrainingActor{aggregatorPID: aggregatorPID}
+		return &TrainingActor{commActorPID: commPID}
 	})
 	trainingPID := rootContext.Spawn(trainingProps)
+
+	rootContext.Send(aggregatorPID, TrainingPIDMsg{TrainingPID: trainingPID})
 
 	// Generisanje i slanje nasumičnih težina za testiranje
 	for i := 0; i < 5; i++ {
 		weights := generateRandomWeights()
-		rootContext.Send(trainingPID, weights)
+		var localWeights LocalWeights
+		localWeights.weights = weights
+		fmt.Println("Main send weights: ", localWeights.weights)
+		rootContext.Send(trainingPID, localWeights)
 		time.Sleep(1 * time.Second)
 	}
 
