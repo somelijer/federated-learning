@@ -1,3 +1,5 @@
+import ast
+import os
 import numpy as np
 import torch as T
 import requests
@@ -71,6 +73,27 @@ def accuracy(model, ds):
     acc = (n_correct * 1.0) / len(ds)
     return acc
 
+def save_model_to_text(model, filename):
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    with open(filename, 'w') as f:
+        for name, param in model.named_parameters():
+            f.write(f"{name}\n")
+            f.write(f"{param.detach().cpu().numpy().tolist()}\n")
+
+            import ast
+
+def load_model_from_text(model, filename):
+    with open(filename, 'r') as f:
+        lines = f.readlines()
+        param_dict = {}
+        for i in range(0, len(lines), 2):
+            name = lines[i].strip()
+            param = ast.literal_eval(lines[i+1].strip())
+            param_dict[name] = T.tensor(param, dtype=T.float32).to(device)
+
+        model.load_state_dict(param_dict)
+
+
 def main():
     # 0. Setup
     print("\nBegin MNIST with CNN demo")
@@ -80,7 +103,7 @@ def main():
     # 1. Fetch MNIST Dataset from GoLang HTTP Server
     print("\nFetching MNIST training Dataset from GoLang HTTP Server")
 
-    num_items = 20000
+    num_items = 30000
     url = f'http://localhost:8080/mnist_data?num={num_items}'
     response = requests.get(url)
 
@@ -107,16 +130,19 @@ def main():
     learning_rate = 0.001
     
     loss_func = T.nn.CrossEntropyLoss()
-    optimizer = T.optim.SGD(net.parameters(), lr=learning_rate)
+    optimizer = T.optim.Adam(net.parameters(), lr=learning_rate)
     
     print(f"\nbatch_size = {batch_size}")
     print(f"loss = {loss_func}")
-    print("optimizer = SGD")
+    print("optimizer = Adam")
     print(f"max_epochs = {max_epochs}")
     print(f"lrn_rate = {learning_rate}")
 
     print("\nStarting training")
     net.train()
+
+    load_model_from_text(net, "model/mnist_model.txt")
+    
     for epoch in range(max_epochs):
         epoch_loss = 0
         for (X, y) in tqdm.tqdm(train_loader):
@@ -129,15 +155,19 @@ def main():
 
         if epoch % epoch_log_interval == 0:
             print(f"Epoch {epoch + 1}/{max_epochs}, Loss: {epoch_loss:.4f}")
-        if epoch % 5 == 0:
+        if (epoch+1) % 5 == 0:
             acc = accuracy(net, train_ds)
             print(f"Accuracy on training set: {acc * 100:.2f}%")
 
     # 4. Evaluate Model
     print("\nComputing model accuracy on the training set")
     net.eval()
+    save_model_to_text(net, "model/mnist_model.txt")
     acc = accuracy(net, train_ds)
     print(f"Accuracy on training set: {acc * 100:.2f}%")
+
+
+
 
     print("\nEnd MNIST demo")
 
