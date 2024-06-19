@@ -10,10 +10,21 @@ import (
 	"github.com/asynkron/protoactor-go/actor"
 )
 
-type Weights struct {
-	WeightsArray []float64
-}
+// type Weights struct {
+// 	WeightsArray []float64
+// }
 
+type Weights struct {
+	Conv1Weight [][][][]float64 `json:"conv1_weight"`
+	Conv1Bias   []float64       `json:"conv1_bias"`
+	Conv2Bias   []float64       `json:"conv2_bias"`
+	Fc1Weight   [][]float64     `json:"fc1_weight"`
+	Fc1Bias     []float64       `json:"fc1_bias"`
+	Fc2Weight   [][]float64     `json:"fc2_weight"`
+	Fc2Bias     []float64       `json:"fc2_bias"`
+	Fc3Weight   [][]float64     `json:"fc3_weight"`
+	Fc3Bias     []float64       `json:"fc3_bias"`
+}
 type LocalWeights struct {
 	weights Weights
 }
@@ -45,7 +56,7 @@ func (state *TrainingActor) Receive(ctx actor.Context) {
 	switch msg := ctx.Message().(type) {
 	case LocalWeights:
 		fmt.Println("Training Actor received weights")
-		fmt.Println("Training Actor weights: ", msg.weights.WeightsArray)
+		//fmt.Println("Training Actor weights: ", msg.weights.WeightsArray)
 		time.Sleep(1 * time.Second) //Sluzi da simulira obradu, da ne bi imali rafalni ispis u konzoli
 		ctx.Send(state.commActorPID, msg)
 	}
@@ -62,8 +73,8 @@ func (state *AggregatorActor) Receive(ctx actor.Context) {
 			state.localWeights.weights = averageWeights(state.localWeights.weights, msg.weights, state.count)
 		}
 		state.count++
-		fmt.Println("Received weights: ", msg.weights.WeightsArray)
-		fmt.Println("Average weights: ", state.localWeights.weights.WeightsArray)
+		fmt.Println("Received weights: ", msg.weights)
+		fmt.Println("Average weights: ", state.localWeights.weights)
 		time.Sleep(1 * time.Second) //Sluzi da simulira obradu, da ne bi imali rafalni ispis u konzoli
 		ctx.Send(state.trainingPID, state.localWeights)
 	case TrainingPIDMsg:
@@ -82,10 +93,10 @@ func (state *CommunicationActor) Receive(ctx actor.Context) {
 		fmt.Println("Send weights to other systems")
 
 		//Ovaj deo za sada simulira da smo dobili poruku tipa RemoteWeights dok ne implementiramo logiku za dobavljanje tezina iz ostalih klastera
-		randomWeights := generateRandomWeights()
+		randomWeights := randomWeights()
 		var remoteWeights RemoteWeights
 		remoteWeights.weights = randomWeights
-		fmt.Println("Comm send weights: ", remoteWeights.weights)
+		//fmt.Println("Comm send weights: ", remoteWeights.weights)
 		time.Sleep(1 * time.Second) //Sluzi da simulira obradu, da ne bi imali rafalni ispis u konzoli
 		ctx.Send(state.aggregatorPID, remoteWeights)
 
@@ -128,17 +139,169 @@ func (state *CommunicationActor) receiveWeights(ctx actor.Context) {
 	}
 }
 
+// func averageWeights(w1, w2 Weights, count int) Weights {
+// 	for i := range w1.WeightsArray {
+// 		w1.WeightsArray[i] = (w1.WeightsArray[i]*float64(count) + w2.WeightsArray[i]) / float64(count+1)
+// 	}
+// 	return w1
+// }
+
 func averageWeights(w1, w2 Weights, count int) Weights {
-	for i := range w1.WeightsArray {
-		w1.WeightsArray[i] = (w1.WeightsArray[i]*float64(count) + w2.WeightsArray[i]) / float64(count+1)
+	// Kopiramo w1 u novi objekat
+	avgWeights := w1
+
+	// Prosecanje Conv1Weight
+	for i := range w1.Conv1Weight {
+		for j := range w1.Conv1Weight[i] {
+			for k := range w1.Conv1Weight[i][j] {
+				for l := range w1.Conv1Weight[i][j][k] {
+					avgWeights.Conv1Weight[i][j][k][l] = (w1.Conv1Weight[i][j][k][l]*float64(count) + w2.Conv1Weight[i][j][k][l]) / float64(count+1)
+				}
+			}
+		}
 	}
-	return w1
+
+	// Prosecanje Conv1Bias
+	for i := range w1.Conv1Bias {
+		avgWeights.Conv1Bias[i] = (w1.Conv1Bias[i]*float64(count) + w2.Conv1Bias[i]) / float64(count+1)
+	}
+
+	// Prosecanje Conv2Bias
+	for i := range w1.Conv2Bias {
+		avgWeights.Conv2Bias[i] = (w1.Conv2Bias[i]*float64(count) + w2.Conv2Bias[i]) / float64(count+1)
+	}
+
+	// Prosecanje Fc1Weight
+	for i := range w1.Fc1Weight {
+		for j := range w1.Fc1Weight[i] {
+			avgWeights.Fc1Weight[i][j] = (w1.Fc1Weight[i][j]*float64(count) + w2.Fc1Weight[i][j]) / float64(count+1)
+		}
+	}
+
+	// Prosecanje Fc1Bias
+	for i := range w1.Fc1Bias {
+		avgWeights.Fc1Bias[i] = (w1.Fc1Bias[i]*float64(count) + w2.Fc1Bias[i]) / float64(count+1)
+	}
+
+	// Prosecanje Fc2Weight
+	for i := range w1.Fc2Weight {
+		for j := range w1.Fc2Weight[i] {
+			avgWeights.Fc2Weight[i][j] = (w1.Fc2Weight[i][j]*float64(count) + w2.Fc2Weight[i][j]) / float64(count+1)
+		}
+	}
+
+	// Prosecanje Fc2Bias
+	for i := range w1.Fc2Bias {
+		avgWeights.Fc2Bias[i] = (w1.Fc2Bias[i]*float64(count) + w2.Fc2Bias[i]) / float64(count+1)
+	}
+
+	// Prosecanje Fc3Weight
+	for i := range w1.Fc3Weight {
+		for j := range w1.Fc3Weight[i] {
+			avgWeights.Fc3Weight[i][j] = (w1.Fc3Weight[i][j]*float64(count) + w2.Fc3Weight[i][j]) / float64(count+1)
+		}
+	}
+
+	// Prosecanje Fc3Bias
+	for i := range w1.Fc3Bias {
+		avgWeights.Fc3Bias[i] = (w1.Fc3Bias[i]*float64(count) + w2.Fc3Bias[i]) / float64(count+1)
+	}
+
+	return avgWeights
 }
 
-func generateRandomWeights() Weights {
+// func generateRandomWeights() Weights {
+// 	rand.Seed(time.Now().UnixNano())
+// 	return Weights{
+// 		WeightsArray: generateRandomVector(10),
+// 	}
+// }
+
+func randomWeights() Weights {
 	rand.Seed(time.Now().UnixNano())
+
+	// Generisanje slučajnih težina za Conv1Weight
+	conv1Weight := make([][][][]float64, 1)
+	for i := range conv1Weight {
+		conv1Weight[i] = make([][][]float64, 1)
+		for j := range conv1Weight[i] {
+			conv1Weight[i][j] = make([][]float64, 1)
+			for k := range conv1Weight[i][j] {
+				conv1Weight[i][j][k] = make([]float64, 2)
+				for l := range conv1Weight[i][j][k] {
+					conv1Weight[i][j][k][l] = rand.Float64()
+				}
+			}
+		}
+	}
+
+	// Generisanje slučajnih težina za Conv1Bias
+	conv1Bias := make([]float64, 2)
+	for i := range conv1Bias {
+		conv1Bias[i] = rand.Float64()
+	}
+
+	// Generisanje slučajnih težina za Conv2Bias
+	conv2Bias := make([]float64, 2)
+	for i := range conv2Bias {
+		conv2Bias[i] = rand.Float64()
+	}
+
+	// Generisanje slučajnih težina za Fc1Weight
+	fc1Weight := make([][]float64, 1)
+	for i := range fc1Weight {
+		fc1Weight[i] = make([]float64, 2)
+		for j := range fc1Weight[i] {
+			fc1Weight[i][j] = rand.Float64()
+		}
+	}
+
+	// Generisanje slučajnih težina za Fc1Bias
+	fc1Bias := make([]float64, 2)
+	for i := range fc1Bias {
+		fc1Bias[i] = rand.Float64()
+	}
+
+	// Generisanje slučajnih težina za Fc2Weight
+	fc2Weight := make([][]float64, 1)
+	for i := range fc2Weight {
+		fc2Weight[i] = make([]float64, 2)
+		for j := range fc2Weight[i] {
+			fc2Weight[i][j] = rand.Float64()
+		}
+	}
+
+	// Generisanje slučajnih težina za Fc2Bias
+	fc2Bias := make([]float64, 2)
+	for i := range fc2Bias {
+		fc2Bias[i] = rand.Float64()
+	}
+
+	// Generisanje slučajnih težina za Fc3Weight
+	fc3Weight := make([][]float64, 1)
+	for i := range fc3Weight {
+		fc3Weight[i] = make([]float64, 2)
+		for j := range fc3Weight[i] {
+			fc3Weight[i][j] = rand.Float64()
+		}
+	}
+
+	// Generisanje slučajnih težina za Fc3Bias
+	fc3Bias := make([]float64, 2)
+	for i := range fc3Bias {
+		fc3Bias[i] = rand.Float64()
+	}
+
 	return Weights{
-		WeightsArray: generateRandomVector(10),
+		Conv1Weight: conv1Weight,
+		Conv1Bias:   conv1Bias,
+		Conv2Bias:   conv2Bias,
+		Fc1Weight:   fc1Weight,
+		Fc1Bias:     fc1Bias,
+		Fc2Weight:   fc2Weight,
+		Fc2Bias:     fc2Bias,
+		Fc3Weight:   fc3Weight,
+		Fc3Bias:     fc3Bias,
 	}
 }
 
@@ -175,10 +338,10 @@ func main() {
 
 	// Generisanje i slanje nasumičnih težina za testiranje
 	for i := 0; i < 5; i++ {
-		weights := generateRandomWeights()
+		weights := randomWeights()
 		var localWeights LocalWeights
 		localWeights.weights = weights
-		fmt.Println("Main send weights: ", localWeights.weights)
+		//fmt.Println("Main send weights: ", localWeights.weights)
 		rootContext.Send(trainingPID, localWeights)
 		time.Sleep(1 * time.Second)
 	}
