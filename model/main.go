@@ -42,7 +42,7 @@ type NoWeightsStart struct {
 type AggregatorActor struct {
 	localWeights LocalWeights
 	remoteWeights RemoteWeights
-	count        int
+	unprocessedRemoteWeights bool 
 	trainingPID  *actor.PID
 }
 
@@ -61,22 +61,20 @@ func (state *AggregatorActor) Receive(ctx actor.Context) {
 	switch msg := ctx.Message().(type) {
 	case LocalWeights:
 		fmt.Println("Aggregator received local weights")
+		if(!state.unprocessedRemoteWeights){
+			fmt.Println("Agregator calculating avarage weights")
+			state.localWeights.weights = averageWeights(state.localWeights.weights, msg.weights,1)
+			state.unprocessedRemoteWeights = false
+		}else{
+			fmt.Println("No new remote weights")
+		}
 		var localWeights LocalWeights
 		localWeights.weights = msg.weights
 		ctx.Send(state.trainingPID, localWeights)
 	case RemoteWeights:
 		fmt.Println("Aggregator received remote weights")
-
-		if state.count == 0 {
-			state.localWeights.weights = msg.weights
-		} else {
-			state.localWeights.weights = averageWeights(state.localWeights.weights, msg.weights, state.count)
-		}
-		state.count++
-		fmt.Println("Received weights: ", msg.weights)
-		fmt.Println("Average weights: ", state.localWeights.weights)
-		time.Sleep(1 * time.Second) //Sluzi da simulira obradu, da ne bi imali rafalni ispis u konzoli
-		ctx.Send(state.trainingPID, state.localWeights)
+		state.unprocessedRemoteWeights = true
+		state.remoteWeights.weights = msg.weights
 	case TrainingPIDMsg:
 		state.trainingPID = msg.TrainingPID
 		fmt.Println("Aggregator received trainingActorPID")
@@ -318,7 +316,7 @@ func main() {
 	rootContext := system.Root
 
 	aggregatorProps := actor.PropsFromProducer(func() actor.Actor {
-		return &AggregatorActor{}
+		return &AggregatorActor{unprocessedRemoteWeights: false}
 	})
 	aggregatorPID := rootContext.Spawn(aggregatorProps)
 

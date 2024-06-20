@@ -153,7 +153,7 @@ def main():
     # 1. Fetch MNIST Dataset from GoLang HTTP Server
     print("\nFetching MNIST training Dataset from GoLang HTTP Server")
 
-    num_items = 30000 #DEPRECATED
+    num_items = 10 #DEPRECATED
     url = f'http://localhost:8080/mnist_data?num={num_items}'
 
     # Ping the server every second for 15 seconds
@@ -234,13 +234,14 @@ def main():
 
    
 
-    # 4. Evaluate Model
-    print("\nComputing model accuracy on the training set")
+
     net.eval()
-    acc = accuracy(net, train_ds)
-    print(f"Accuracy on training set: {acc * 100:.2f}%")
+    if False:
+        acc = accuracy(net, train_ds)
+        print(f"Accuracy on training set: {acc * 100:.2f}%")
 
     send_weights_to_golang(convert_weights_to_dict(net))
+    save_model_to_text(net,"model/mnist_model.txt")
 
 
 

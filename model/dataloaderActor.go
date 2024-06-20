@@ -11,7 +11,11 @@ import (
 var (
     imagesFilePath = "data/train-images-idx3-ubyte"
     labelsFilePath = "data/train-labels-idx1-ubyte"
+
 )
+
+var datasetStart int = 0  
+var datasetEnd int = 2000  
 
 type LoadDataMsg struct{}
 
@@ -39,11 +43,11 @@ func (state *DataloaderActor) Receive(ctx actor.Context) {
         imageSize := numRows * numCols
 
         mnistData := MNISTData{
-            Images: make([][]float32, 2000),
-            Labels: make([]int, 2000),
+            Images: make([][]float32, datasetEnd-datasetStart),
+            Labels: make([]int, datasetEnd-datasetStart),
         }
 
-        for i := 0; i < 2000; i++ {
+        for i := datasetStart; i < datasetEnd; i++ {
             mnistData.Images[i] = make([]float32, imageSize)
             for j := 0; j < imageSize; j++ {
                 mnistData.Images[i][j] = float32(images[i*imageSize+j]) / 255.0

@@ -53,6 +53,7 @@ func (state *TrainingActor) Receive(ctx actor.Context) {
         //ctx.Send(state.commActorPID, msg)
     case LocalWeights:
         fmt.Println("Training Actor received weights")
+		weights = &msg.weights
         var wg sync.WaitGroup
 
 		wg.Add(1)
@@ -79,7 +80,6 @@ func runPythonScript(wg *sync.WaitGroup) {
 	if err != nil {
 		log.Fatalf("cmd.Run() failed with %s\n", err)
 	}
-	fmt.Printf("Python script finished executing")
 }
 
 func handleMNISTDataRequest(w http.ResponseWriter, r *http.Request) {
@@ -104,7 +104,7 @@ func handleMNISTDataRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Printf("Sending MNIST data for training")
+	fmt.Println("Sending MNIST data for training")
 }
 
 func handleInitialWeightsRequest(w http.ResponseWriter, r *http.Request) {
@@ -150,6 +150,22 @@ func handleWeightsRequest(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func handleRemoteWeightsSimulation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	fmt.Println("Sending simulation remote weights")
+
+	var remoteWeights RemoteWeights
+	remoteWeights.weights = *weights
+	//fmt.Println("Main send weights: ", localWeights.weights)
+	outTrainctx.Send(outTrainState.commActorPID, remoteWeights)
+
+	w.WriteHeader(http.StatusOK)
+}
+
 func startServer() {
 
 	if serverRunning {
@@ -161,9 +177,10 @@ func startServer() {
 	http.HandleFunc("/mnist_data", handleMNISTDataRequest)
 	http.HandleFunc("/weights", handleWeightsRequest)
 	http.HandleFunc("/initial_weights", handleInitialWeightsRequest)
+	http.HandleFunc("/simulate_remote", handleRemoteWeightsSimulation)
 
 	port := ":8080"
-	fmt.Printf("Server listening on port %s...\n", port)
+	fmt.Println("Server listening on port %s...\n", port)
 	if err := http.ListenAndServe(port, nil); err != nil {
 		log.Fatal(err)
 	}
