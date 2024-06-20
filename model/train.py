@@ -1,4 +1,5 @@
 import ast
+import json
 import os
 import time
 import numpy as np
@@ -74,6 +75,56 @@ def accuracy(model, ds):
     acc = (n_correct * 1.0) / len(ds)
     return acc
 
+def request_initial_weights():
+    url = 'http://localhost:8080/initial_weights'
+    response = requests.get(url)
+    if response.status_code == 200:
+        weights = response.json()
+        return weights
+    elif response.status_code == 404:
+        print("No initial weights available.")
+        return None
+    else:
+        print(f"Error fetching initial weights: {response.status_code}, {response.text}")
+        return None
+
+def load_weights_to_model(model, weights):
+    model.conv1.weight.data = T.tensor(weights['conv1_weight'], dtype=T.float32).to(device)
+    model.conv1.bias.data = T.tensor(weights['conv1_bias'], dtype=T.float32).to(device)
+    model.conv2.weight.data = T.tensor(weights['conv2_weight'], dtype=T.float32).to(device)
+    model.conv2.bias.data = T.tensor(weights['conv2_bias'], dtype=T.float32).to(device)
+    model.fc1.weight.data = T.tensor(weights['fc1_weight'], dtype=T.float32).to(device)
+    model.fc1.bias.data = T.tensor(weights['fc1_bias'], dtype=T.float32).to(device)
+    model.fc2.weight.data = T.tensor(weights['fc2_weight'], dtype=T.float32).to(device)
+    model.fc2.bias.data = T.tensor(weights['fc2_bias'], dtype=T.float32).to(device)
+    model.fc3.weight.data = T.tensor(weights['fc3_weight'], dtype=T.float32).to(device)
+    
+
+def send_weights_to_golang(weights):
+    url = 'http://localhost:8080/weights'  # Assuming the Go server listens on port 8081
+    headers = {'Content-Type': 'application/json'}
+    response = requests.post(url, data=json.dumps(weights), headers=headers)
+    if response.status_code == 200:
+        print("Weights sent successfully")
+        #print("conv1 bias: "+str(weights['conv1_bias']))
+    else:
+        print(f"Error sending weights: {response.status_code}, {response.text}")
+
+def convert_weights_to_dict(model):
+    weights = {
+        'conv1_weight': model.conv1.weight.detach().cpu().numpy().tolist(),
+        'conv1_bias': model.conv1.bias.detach().cpu().numpy().tolist(),
+        'conv2_weight': model.conv2.weight.detach().cpu().numpy().tolist(),
+        'conv2_bias': model.conv2.bias.detach().cpu().numpy().tolist(),
+        'fc1_weight': model.fc1.weight.detach().cpu().numpy().tolist(),
+        'fc1_bias': model.fc1.bias.detach().cpu().numpy().tolist(),
+        'fc2_weight': model.fc2.weight.detach().cpu().numpy().tolist(),
+        'fc2_bias': model.fc2.bias.detach().cpu().numpy().tolist(),
+        'fc3_weight': model.fc3.weight.detach().cpu().numpy().tolist(),
+        'fc3_bias': model.fc3.bias.detach().cpu().numpy().tolist()
+    }
+    return weights
+
 def save_model_to_text(model, filename):
     os.makedirs(os.path.dirname(filename), exist_ok=True)
     with open(filename, 'w') as f:
@@ -96,15 +147,13 @@ def load_model_from_text(model, filename):
 
 
 def main():
-    # 0. Setup
-    print("\nBegin MNIST with CNN demo")
     np.random.seed(1)
     T.manual_seed(1)
 
     # 1. Fetch MNIST Dataset from GoLang HTTP Server
     print("\nFetching MNIST training Dataset from GoLang HTTP Server")
 
-    num_items = 30000
+    num_items = 30000 #DEPRECATED
     url = f'http://localhost:8080/mnist_data?num={num_items}'
 
     # Ping the server every second for 15 seconds
@@ -140,8 +189,17 @@ def main():
     print("\nCreating CNN network with 2 conv and 3 linear layers")
     net = Net().to(device)
 
+    initial_weights = request_initial_weights()
+    if initial_weights:
+        load_weights_to_model(net, initial_weights)
+        print("\nLoaded in existing weights")
+    else:
+        print("\nInitialising random weights")
+
+
+
     # 3. Train Model
-    max_epochs = 20
+    max_epochs = 2
     epoch_log_interval = 1
     learning_rate = 0.001
     
@@ -156,9 +214,9 @@ def main():
 
     print("\nStarting training")
     net.train()
-
-    load_model_from_text(net, "model\mnist_model_best_train.txt")
     
+    send_weights_to_golang(convert_weights_to_dict(net))
+
     for epoch in range(max_epochs):
         epoch_loss = 0
         for (X, y) in tqdm.tqdm(train_loader):
@@ -175,10 +233,11 @@ def main():
             acc = accuracy(net, train_ds)
             print(f"Accuracy on training set: {acc * 100:.2f}%")
 
+   
+
     # 4. Evaluate Model
     print("\nComputing model accuracy on the training set")
     net.eval()
-    save_model_to_text(net, "model/mnist_model.txt")
     acc = accuracy(net, train_ds)
     print(f"Accuracy on training set: {acc * 100:.2f}%")
 

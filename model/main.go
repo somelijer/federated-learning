@@ -17,6 +17,7 @@ import (
 type Weights struct {
 	Conv1Weight [][][][]float64 `json:"conv1_weight"`
 	Conv1Bias   []float64       `json:"conv1_bias"`
+	Conv2Weight [][][][]float64 `json:"conv2_weight"`
 	Conv2Bias   []float64       `json:"conv2_bias"`
 	Fc1Weight   [][]float64     `json:"fc1_weight"`
 	Fc1Bias     []float64       `json:"fc1_bias"`
@@ -33,9 +34,10 @@ type RemoteWeights struct {
 	weights Weights
 }
 
-type TrainingActor struct {
-	commActorPID *actor.PID
+type NoWeightsStart struct {
+	rand int
 }
+
 
 type AggregatorActor struct {
 	localWeights LocalWeights
@@ -48,24 +50,11 @@ type CommunicationActor struct {
 	aggregatorPID *actor.PID
 }
 
-type DataloaderActor struct {
-	commActorPID *actor.PID
-	TrainingPID *actor.PID
-}
-
 type TrainingPIDMsg struct {
 	TrainingPID *actor.PID
 }
 
-func (state *TrainingActor) Receive(ctx actor.Context) {
-	switch msg := ctx.Message().(type) {
-	case LocalWeights:
-		fmt.Println("Training Actor received weights")
-		//fmt.Println("Training Actor weights: ", msg.weights.WeightsArray)
-		time.Sleep(1 * time.Second) //Sluzi da simulira obradu, da ne bi imali rafalni ispis u konzoli
-		ctx.Send(state.commActorPID, msg)
-	}
-}
+
 
 func (state *AggregatorActor) Receive(ctx actor.Context) {
 	switch msg := ctx.Message().(type) {
@@ -339,17 +328,23 @@ func main() {
 	})
 	trainingPID := rootContext.Spawn(trainingProps)
 
-	rootContext.Send(aggregatorPID, TrainingPIDMsg{TrainingPID: trainingPID})
+	dataloaderProps := actor.PropsFromProducer(func() actor.Actor {
+		return &DataloaderActor{commActorPID: commPID,trainingPID: trainingPID}
+	})
+	dataloaderPropsPID := rootContext.Spawn(dataloaderProps)
+	rootContext.Send(dataloaderPropsPID, LoadDataMsg{})
+
+	//rootContext.Send(aggregatorPID, TrainingPIDMsg{TrainingPID: trainingPID})
 
 	// Generisanje i slanje nasumičnih težina za testiranje
-	for i := 0; i < 5; i++ {
+	/*for i := 0; i < 5; i++ {
 		weights := randomWeights()
 		var localWeights LocalWeights
 		localWeights.weights = weights
 		//fmt.Println("Main send weights: ", localWeights.weights)
 		rootContext.Send(trainingPID, localWeights)
 		time.Sleep(1 * time.Second)
-	}
+	}*/
 
 	// Dajemo malo vremena za obradu
 	select {}
