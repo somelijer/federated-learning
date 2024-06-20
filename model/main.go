@@ -41,6 +41,7 @@ type NoWeightsStart struct {
 
 type AggregatorActor struct {
 	localWeights LocalWeights
+	remoteWeights RemoteWeights
 	count        int
 	trainingPID  *actor.PID
 }
@@ -58,8 +59,13 @@ type TrainingPIDMsg struct {
 
 func (state *AggregatorActor) Receive(ctx actor.Context) {
 	switch msg := ctx.Message().(type) {
+	case LocalWeights:
+		fmt.Println("Aggregator received local weights")
+		var localWeights LocalWeights
+		localWeights.weights = msg.weights
+		ctx.Send(state.trainingPID, localWeights)
 	case RemoteWeights:
-		fmt.Println("Aggregator received weights")
+		fmt.Println("Aggregator received remote weights")
 
 		if state.count == 0 {
 			state.localWeights.weights = msg.weights
@@ -87,12 +93,10 @@ func (state *CommunicationActor) Receive(ctx actor.Context) {
 		fmt.Println("Send weights to other systems")
 
 		//Ovaj deo za sada simulira da smo dobili poruku tipa RemoteWeights dok ne implementiramo logiku za dobavljanje tezina iz ostalih klastera
-		randomWeights := randomWeights()
-		var remoteWeights RemoteWeights
-		remoteWeights.weights = randomWeights
-		//fmt.Println("Comm send weights: ", remoteWeights.weights)
-		time.Sleep(1 * time.Second) //Sluzi da simulira obradu, da ne bi imali rafalni ispis u konzoli
-		ctx.Send(state.aggregatorPID, remoteWeights)
+
+		var localWeights LocalWeights
+		localWeights.weights = msg.weights
+		ctx.Send(state.aggregatorPID, localWeights)
 
 	case RemoteWeights:
 		var localWeights LocalWeights
@@ -334,7 +338,7 @@ func main() {
 	dataloaderPropsPID := rootContext.Spawn(dataloaderProps)
 	rootContext.Send(dataloaderPropsPID, LoadDataMsg{})
 
-	//rootContext.Send(aggregatorPID, TrainingPIDMsg{TrainingPID: trainingPID})
+	rootContext.Send(aggregatorPID, TrainingPIDMsg{TrainingPID: trainingPID})
 
 	// Generisanje i slanje nasumičnih težina za testiranje
 	/*for i := 0; i < 5; i++ {

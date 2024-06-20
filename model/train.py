@@ -186,7 +186,7 @@ def main():
     train_loader = T.utils.data.DataLoader(train_ds, batch_size=batch_size, shuffle=True)
 
     # 2. Create Network
-    print("\nCreating CNN network with 2 conv and 3 linear layers")
+    print("\nStarting training script")
     net = Net().to(device)
 
     initial_weights = request_initial_weights()
@@ -215,7 +215,6 @@ def main():
     print("\nStarting training")
     net.train()
     
-    send_weights_to_golang(convert_weights_to_dict(net))
 
     for epoch in range(max_epochs):
         epoch_loss = 0
@@ -241,10 +240,11 @@ def main():
     acc = accuracy(net, train_ds)
     print(f"Accuracy on training set: {acc * 100:.2f}%")
 
+    send_weights_to_golang(convert_weights_to_dict(net))
 
 
 
-    print("\nEnd MNIST demo")
+    print("\nEnd training script")
 
 if __name__ == "__main__":
     main()

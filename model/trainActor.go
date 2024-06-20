@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os/exec"
 	"sync"
-	"time"
 
 	"github.com/asynkron/protoactor-go/actor"
 )
@@ -29,11 +28,14 @@ type TrainingActor struct {
 
 var mnistData *MNISTData = nil
 var weights *Weights = nil
-
+var outTrainctx actor.Context = nil
+var serverRunning bool = false
+var outTrainState *TrainingActor = nil
 
 
 func (state *TrainingActor) Receive(ctx actor.Context) {
-	
+	outTrainctx = ctx
+	outTrainState = state
     switch msg := ctx.Message().(type) {
     case MNISTData:
         fmt.Println("Training Actor received MNIST data")
@@ -41,30 +43,26 @@ func (state *TrainingActor) Receive(ctx actor.Context) {
 		fmt.Println("Training Actor starting with random weights")
 		var wg sync.WaitGroup
 
-		wg.Add(2)
+		wg.Add(1)
 	
-		go startServer(&wg)
+		go startServer()
 		go runPythonScript(&wg)
 	
 		wg.Wait()
-		fmt.Println("Both server and Python script have finished executing.")
+		fmt.Println("Python script has finished executing.")
         //ctx.Send(state.commActorPID, msg)
     case LocalWeights:
         fmt.Println("Training Actor received weights")
-        // Process received weights
-        time.Sleep(1 * time.Second) // Simulate processing time
-        ctx.Send(state.commActorPID, msg)
-	case NoWeightsStart:
-		fmt.Println("Training Actor starting with random weights")
-		var wg sync.WaitGroup
+        var wg sync.WaitGroup
 
-		wg.Add(2)
+		wg.Add(1)
 	
-		go startServer(&wg)
+		go startServer()
 		go runPythonScript(&wg)
 	
 		wg.Wait()
-		fmt.Println("Both server and Python script have finished executing.")
+		fmt.Println("Python script has finished executing.")
+
     }
 }
 
@@ -139,16 +137,27 @@ func handleWeightsRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	fmt.Println("Weights received successfully")
 	weights = &tempa
 
 	//fmt.Println("conv1 bias: ",tempa.Conv1Bias)
 
-	fmt.Println("Weights received successfully")
+	var localWeights LocalWeights
+	localWeights.weights = *weights
+	//fmt.Println("Main send weights: ", localWeights.weights)
+	outTrainctx.Send(outTrainState.commActorPID, localWeights)
+
 	w.WriteHeader(http.StatusOK)
 }
 
-func startServer(wg *sync.WaitGroup) {
-	defer wg.Done()
+func startServer() {
+
+	if serverRunning {
+		return // Server is already running
+	}
+
+	serverRunning = true
+
 	http.HandleFunc("/mnist_data", handleMNISTDataRequest)
 	http.HandleFunc("/weights", handleWeightsRequest)
 	http.HandleFunc("/initial_weights", handleInitialWeightsRequest)
@@ -158,6 +167,8 @@ func startServer(wg *sync.WaitGroup) {
 	if err := http.ListenAndServe(port, nil); err != nil {
 		log.Fatal(err)
 	}
+
+	serverRunning = false
 }
 
 

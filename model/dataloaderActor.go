@@ -39,11 +39,11 @@ func (state *DataloaderActor) Receive(ctx actor.Context) {
         imageSize := numRows * numCols
 
         mnistData := MNISTData{
-            Images: make([][]float32, 20000),
-            Labels: make([]int, 20000),
+            Images: make([][]float32, 2000),
+            Labels: make([]int, 2000),
         }
 
-        for i := 0; i < 20000; i++ {
+        for i := 0; i < 2000; i++ {
             mnistData.Images[i] = make([]float32, imageSize)
             for j := 0; j < imageSize; j++ {
                 mnistData.Images[i][j] = float32(images[i*imageSize+j]) / 255.0
