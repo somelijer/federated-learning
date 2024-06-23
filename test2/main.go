@@ -12,17 +12,13 @@ import (
 	"main.go/converter"
 	"main.go/messages"
 	"main.go/model"
-	randomgenerator "main.go/random-generator"
 )
 
-type TrainingActor struct {
-	commActorPID *actor.PID
-}
-
 type AggregatorActor struct {
-	localWeights model.LocalWeights
-	count        int
-	trainingPID  *actor.PID
+	localWeights             model.LocalWeights
+	remoteWeights            model.RemoteWeights
+	unprocessedRemoteWeights bool
+	trainingPID              *actor.PID
 }
 
 type CommunicationActor struct {
@@ -30,33 +26,58 @@ type CommunicationActor struct {
 	otherCommunicationPID *actor.PID
 }
 
-func (state *TrainingActor) Receive(ctx actor.Context) {
-	switch msg := ctx.Message().(type) {
-	case model.LocalWeights:
-		fmt.Println("Training Actor received weights")
-		time.Sleep(2 * time.Second) //Sluzi da simulira obradu, da ne bi imali rafalni ispis u konzoli
-		localWeightsMessage := &messages.LocalWeights{
-			Weights: converter.ToProtoWeights(msg.Weights),
-		}
-		ctx.Send(state.commActorPID, localWeightsMessage)
-	}
-}
+// func (state *TrainingActor) Receive(ctx actor.Context) {
+// 	switch msg := ctx.Message().(type) {
+// 	case model.LocalWeights:
+// 		fmt.Println("Training Actor received weights")
+// 		time.Sleep(2 * time.Second) //Sluzi da simulira obradu, da ne bi imali rafalni ispis u konzoli
+// 		localWeightsMessage := &messages.LocalWeights{
+// 			Weights: converter.ToProtoWeights(msg.Weights),
+// 		}
+// 		ctx.Send(state.commActorPID, localWeightsMessage)
+// 	}
+// }
+
+// func (state *AggregatorActor) Receive(ctx actor.Context) {
+// 	switch msg := ctx.Message().(type) {
+// 	case *messages.RemoteWeights:
+// 		fmt.Println("Aggregator received weights")
+
+// 		if state.count == 0 {
+// 			state.localWeights.Weights = converter.FromProtoWeights(msg.Weights)
+// 		} else {
+// 			state.localWeights.Weights = averageWeights(state.localWeights.Weights, converter.FromProtoWeights(msg.Weights), state.count)
+// 		}
+// 		state.count++
+// 		fmt.Println("Received weights: ", converter.FromProtoWeights(msg.Weights))
+// 		fmt.Println("Average weights: ", state.localWeights.Weights)
+// 		time.Sleep(1 * time.Second) //Sluzi da simulira obradu, da ne bi imali rafalni ispis u konzoli
+// 		ctx.Send(state.trainingPID, state.localWeights)
+// 	case model.TrainingPIDMsg:
+// 		state.trainingPID = msg.TrainingPID
+// 		fmt.Println("Aggregator received trainingActorPID")
+
+// 	}
+// }
 
 func (state *AggregatorActor) Receive(ctx actor.Context) {
 	switch msg := ctx.Message().(type) {
-	case *messages.RemoteWeights:
-		fmt.Println("Aggregator received weights")
-
-		if state.count == 0 {
-			state.localWeights.Weights = converter.FromProtoWeights(msg.Weights)
+	case model.LocalWeights:
+		fmt.Println("Aggregator received local weights")
+		if state.unprocessedRemoteWeights {
+			fmt.Println("Agregator calculating avarage weights")
+			state.localWeights.Weights = averageWeights(state.remoteWeights.Weights, msg.Weights, 1)
+			state.unprocessedRemoteWeights = false
 		} else {
-			state.localWeights.Weights = averageWeights(state.localWeights.Weights, converter.FromProtoWeights(msg.Weights), state.count)
+			fmt.Println("No new remote weights")
 		}
-		state.count++
-		fmt.Println("Received weights: ", converter.FromProtoWeights(msg.Weights))
-		fmt.Println("Average weights: ", state.localWeights.Weights)
-		time.Sleep(1 * time.Second) //Sluzi da simulira obradu, da ne bi imali rafalni ispis u konzoli
-		ctx.Send(state.trainingPID, state.localWeights)
+		var localWeights model.LocalWeights
+		localWeights.Weights = msg.Weights
+		ctx.Send(state.trainingPID, localWeights)
+	case messages.RemoteWeights:
+		fmt.Println("Aggregator received remote weights")
+		state.unprocessedRemoteWeights = true
+		state.remoteWeights.Weights = converter.FromProtoWeights(msg.Weights)
 	case model.TrainingPIDMsg:
 		state.trainingPID = msg.TrainingPID
 		fmt.Println("Aggregator received trainingActorPID")
@@ -104,6 +125,17 @@ func averageWeights(w1, w2 model.Weights, count int) model.Weights {
 			for k := range w1.Conv1Weight[i][j] {
 				for l := range w1.Conv1Weight[i][j][k] {
 					avgWeights.Conv1Weight[i][j][k][l] = (w1.Conv1Weight[i][j][k][l]*float64(count) + w2.Conv1Weight[i][j][k][l]) / float64(count+1)
+				}
+			}
+		}
+	}
+
+	// Prosecanje Conv2Weight
+	for i := range w1.Conv2Weight {
+		for j := range w1.Conv2Weight[i] {
+			for k := range w1.Conv2Weight[i][j] {
+				for l := range w1.Conv2Weight[i][j][k] {
+					avgWeights.Conv2Weight[i][j][k][l] = (w1.Conv2Weight[i][j][k][l]*float64(count) + w2.Conv2Weight[i][j][k][l]) / float64(count+1)
 				}
 			}
 		}
@@ -163,13 +195,15 @@ func main() {
 	system := actor.NewActorSystem()
 	rootContext := system.Root
 
-	config := remote.Configure("127.0.0.1", 8082)
+	//config := remote.Configure("127.0.0.1", 8082)
 
-	provider := automanaged.NewWithConfig(1*time.Second, 6332, "localhost:6331")
+	config := remote.Configure("127.0.0.1", 8082, remote.WithEndpointManagerBatchSize(9000000), remote.WithEndpointWriterBatchSize(9000000))
+
+	provider := automanaged.NewWithConfig(1*time.Second, 6330, "localhost:6331")
 	lookup := disthash.New()
 
 	aggregatorProps := actor.PropsFromProducer(func() actor.Actor {
-		return &AggregatorActor{}
+		return &AggregatorActor{unprocessedRemoteWeights: false}
 	})
 
 	aggregatorPID := rootContext.Spawn(aggregatorProps)
@@ -207,17 +241,23 @@ func main() {
 	})
 	trainingPID := rootContext.Spawn(trainingProps)
 
+	dataloaderProps := actor.PropsFromProducer(func() actor.Actor {
+		return &DataloaderActor{commActorPID: commPID, trainingPID: trainingPID}
+	})
+	dataloaderPropsPID := rootContext.Spawn(dataloaderProps)
+	rootContext.Send(dataloaderPropsPID, LoadDataMsg{})
+
 	rootContext.Send(aggregatorPID, model.TrainingPIDMsg{TrainingPID: trainingPID})
 
 	// Generisanje i slanje nasumičnih težina za testiranje
-	for i := 0; i < 20; i++ {
-		weights := randomgenerator.RandomWeights()
-		var localWeights model.LocalWeights
-		localWeights.Weights = weights
-		//fmt.Println("Main send weights: ", localWeights.weights)
-		rootContext.Send(trainingPID, localWeights)
-		time.Sleep(1 * time.Second)
-	}
+	// for i := 0; i < 20; i++ {
+	// 	weights := randomgenerator.RandomWeights()
+	// 	var localWeights model.LocalWeights
+	// 	localWeights.Weights = weights
+	// 	//fmt.Println("Main send weights: ", localWeights.weights)
+	// 	rootContext.Send(trainingPID, localWeights)
+	// 	time.Sleep(1 * time.Second)
+	// }
 
 	// Dajemo malo vremena za obradu
 	select {}

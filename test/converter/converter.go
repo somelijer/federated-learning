@@ -4,9 +4,14 @@ import (
 	"github.com/asynkron/protoactor-go/actor"
 	"main.go/messages"
 	"main.go/model"
+	randomgenerator "main.go/random-generator"
 )
 
 func ToProtoWeights(w model.Weights) *messages.Weights {
+
+	tempSloj := w
+	tempWeights := randomgenerator.RandomWeights()
+	w = tempWeights
 	// Convert Conv1Weight
 	var protoConv1Weight []*messages.Conv1Weight
 	for _, w1 := range w.Conv1Weight {
@@ -21,6 +26,21 @@ func ToProtoWeights(w model.Weights) *messages.Weights {
 			w1List = append(w1List, &messages.Conv1Weight2{Conv1Weight: w2List})
 		}
 		protoConv1Weight = append(protoConv1Weight, &messages.Conv1Weight{Conv1Weight: w1List})
+	}
+
+	var protoConv2Weight []*messages.Conv1Weight
+	for _, w1 := range w.Conv2Weight {
+		var w1List []*messages.Conv1Weight2
+		for _, w2 := range w1 {
+			var w2List []*messages.Conv1Weight3
+			for _, w3 := range w2 {
+				for _, w4 := range w3 {
+					w2List = append(w2List, &messages.Conv1Weight3{Conv1Weight: w4})
+				}
+			}
+			w1List = append(w1List, &messages.Conv1Weight2{Conv1Weight: w2List})
+		}
+		protoConv2Weight = append(protoConv2Weight, &messages.Conv1Weight{Conv1Weight: w1List})
 	}
 
 	// Convert Fc1Weight, Fc2Weight, Fc3Weight
@@ -38,9 +58,10 @@ func ToProtoWeights(w model.Weights) *messages.Weights {
 
 	return &messages.Weights{
 		Conv1Weight: protoConv1Weight,
+		Conv2Weight: protoConv2Weight,
 		Conv1Bias:   w.Conv1Bias,
 		Conv2Bias:   w.Conv2Bias,
-		Fc1Weight:   convertFcWeight(w.Fc1Weight),
+		Fc1Weight:   convertFcWeight(tempSloj.Fc1Weight),
 		Fc1Bias:     w.Fc1Bias,
 		Fc2Weight:   convertFcWeight(w.Fc2Weight),
 		Fc2Bias:     w.Fc2Bias,

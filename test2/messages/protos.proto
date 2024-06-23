@@ -10,14 +10,15 @@ option go_package = "test/messages";
 
 message Weights {
   repeated Conv1Weight conv1_weight = 1;
-  repeated double conv1_bias = 2;
-  repeated double conv2_bias = 3;
-  repeated FcWeight fc1_weight = 4;
-  repeated double fc1_bias = 5;
-  repeated FcWeight fc2_weight = 6;
-  repeated double fc2_bias = 7;
-  repeated FcWeight fc3_weight = 8;
-  repeated double fc3_bias = 9;
+  repeated Conv1Weight conv2_weight = 2;
+  repeated double conv1_bias = 3;
+  repeated double conv2_bias = 4;
+  repeated FcWeight fc1_weight = 5;
+  repeated double fc1_bias = 6;
+  repeated FcWeight fc2_weight = 7;
+  repeated double fc2_bias = 8;
+  repeated FcWeight fc3_weight = 9;
+  repeated double fc3_bias = 10;
 }
 
 message Conv1Weight {

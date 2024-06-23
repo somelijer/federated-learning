@@ -12,17 +12,13 @@ import (
 	"main.go/converter"
 	"main.go/messages"
 	"main.go/model"
-	randomgenerator "main.go/random-generator"
 )
 
-type TrainingActor struct {
-	commActorPID *actor.PID
-}
-
 type AggregatorActor struct {
-	localWeights model.LocalWeights
-	count        int
-	trainingPID  *actor.PID
+	localWeights             model.LocalWeights
+	remoteWeights            model.RemoteWeights
+	unprocessedRemoteWeights bool
+	trainingPID              *actor.PID
 }
 
 type CommunicationActor struct {
@@ -30,42 +26,58 @@ type CommunicationActor struct {
 	otherCommunicationPID *actor.PID
 }
 
-type DataloaderActor struct {
-	commActorPID *actor.PID
-	TrainingPID  *actor.PID
-}
+// func (state *TrainingActor) Receive(ctx actor.Context) {
+// 	switch msg := ctx.Message().(type) {
+// 	case model.LocalWeights:
+// 		fmt.Println("Training Actor received weights")
+// 		time.Sleep(2 * time.Second) //Sluzi da simulira obradu, da ne bi imali rafalni ispis u konzoli
+// 		localWeightsMessage := &messages.LocalWeights{
+// 			Weights: converter.ToProtoWeights(msg.Weights),
+// 		}
+// 		ctx.Send(state.commActorPID, localWeightsMessage)
+// 	}
+// }
 
-type TrainingPIDMsg struct {
-	TrainingPID *actor.PID
-}
+// func (state *AggregatorActor) Receive(ctx actor.Context) {
+// 	switch msg := ctx.Message().(type) {
+// 	case *messages.RemoteWeights:
+// 		fmt.Println("Aggregator received weights")
 
-func (state *TrainingActor) Receive(ctx actor.Context) {
-	switch msg := ctx.Message().(type) {
-	case model.LocalWeights:
-		fmt.Println("Training Actor received weights")
-		time.Sleep(2 * time.Second) //Sluzi da simulira obradu, da ne bi imali rafalni ispis u konzoli
-		localWeightsMessage := &messages.LocalWeights{
-			Weights: converter.ToProtoWeights(msg.Weights),
-		}
-		ctx.Send(state.commActorPID, localWeightsMessage)
-	}
-}
+// 		if state.count == 0 {
+// 			state.localWeights.Weights = converter.FromProtoWeights(msg.Weights)
+// 		} else {
+// 			state.localWeights.Weights = averageWeights(state.localWeights.Weights, converter.FromProtoWeights(msg.Weights), state.count)
+// 		}
+// 		state.count++
+// 		fmt.Println("Received weights: ", converter.FromProtoWeights(msg.Weights))
+// 		fmt.Println("Average weights: ", state.localWeights.Weights)
+// 		time.Sleep(1 * time.Second) //Sluzi da simulira obradu, da ne bi imali rafalni ispis u konzoli
+// 		ctx.Send(state.trainingPID, state.localWeights)
+// 	case model.TrainingPIDMsg:
+// 		state.trainingPID = msg.TrainingPID
+// 		fmt.Println("Aggregator received trainingActorPID")
+
+// 	}
+// }
 
 func (state *AggregatorActor) Receive(ctx actor.Context) {
 	switch msg := ctx.Message().(type) {
-	case *messages.RemoteWeights:
-		fmt.Println("Aggregator received weights")
-
-		if state.count == 0 {
-			state.localWeights.Weights = converter.FromProtoWeights(msg.Weights)
+	case model.LocalWeights:
+		fmt.Println("Aggregator received local weights")
+		if state.unprocessedRemoteWeights {
+			fmt.Println("Agregator calculating avarage weights")
+			state.localWeights.Weights = averageWeights(state.remoteWeights.Weights, msg.Weights, 1)
+			state.unprocessedRemoteWeights = false
 		} else {
-			state.localWeights.Weights = averageWeights(state.localWeights.Weights, converter.FromProtoWeights(msg.Weights), state.count)
+			fmt.Println("No new remote weights")
 		}
-		state.count++
-		fmt.Println("Received weights: ", converter.FromProtoWeights(msg.Weights))
-		fmt.Println("Average weights: ", state.localWeights.Weights)
-		time.Sleep(1 * time.Second) //Sluzi da simulira obradu, da ne bi imali rafalni ispis u konzoli
-		ctx.Send(state.trainingPID, state.localWeights)
+		var localWeights model.LocalWeights
+		localWeights.Weights = msg.Weights
+		ctx.Send(state.trainingPID, localWeights)
+	case messages.RemoteWeights:
+		fmt.Println("Aggregator received remote weights")
+		state.unprocessedRemoteWeights = true
+		state.remoteWeights.Weights = converter.FromProtoWeights(msg.Weights)
 	case model.TrainingPIDMsg:
 		state.trainingPID = msg.TrainingPID
 		fmt.Println("Aggregator received trainingActorPID")
@@ -100,6 +112,7 @@ func (state *CommunicationActor) Receive(ctx actor.Context) {
 		state.aggregatorPID = converter.ProtoToActorPID(msg.AggregatorPID)
 	case *messages.OtherCommunicationPIDMsg:
 		state.otherCommunicationPID = converter.ProtoToActorPID(msg.OtherCommPID)
+
 	}
 }
 
@@ -113,6 +126,17 @@ func averageWeights(w1, w2 model.Weights, count int) model.Weights {
 			for k := range w1.Conv1Weight[i][j] {
 				for l := range w1.Conv1Weight[i][j][k] {
 					avgWeights.Conv1Weight[i][j][k][l] = (w1.Conv1Weight[i][j][k][l]*float64(count) + w2.Conv1Weight[i][j][k][l]) / float64(count+1)
+				}
+			}
+		}
+	}
+
+	// Prosecanje Conv2Weight
+	for i := range w1.Conv2Weight {
+		for j := range w1.Conv2Weight[i] {
+			for k := range w1.Conv2Weight[i][j] {
+				for l := range w1.Conv2Weight[i][j][k] {
+					avgWeights.Conv2Weight[i][j][k][l] = (w1.Conv2Weight[i][j][k][l]*float64(count) + w2.Conv2Weight[i][j][k][l]) / float64(count+1)
 				}
 			}
 		}
@@ -172,21 +196,19 @@ func main() {
 	system := actor.NewActorSystem()
 	rootContext := system.Root
 
-	config := remote.Configure("127.0.0.1", 8081)
+	//config := remote.Configure("127.0.0.1", 8081)
+
+	// Configure remote with custom gRPC options
+	config := remote.Configure("127.0.0.1", 8081, remote.WithEndpointManagerBatchSize(9000000), remote.WithEndpointWriterBatchSize(9000000))
 
 	provider := automanaged.NewWithConfig(1*time.Second, 6331, "localhost:6331")
 	lookup := disthash.New()
 
 	aggregatorProps := actor.PropsFromProducer(func() actor.Actor {
-		return &AggregatorActor{}
+		return &AggregatorActor{unprocessedRemoteWeights: false}
 	})
 
 	aggregatorPID := rootContext.Spawn(aggregatorProps)
-	// aggregatorPID, err := rootContext.SpawnNamed(aggregatorProps, "first-agregator")
-	// if err != nil {
-	// 	fmt.Printf("Failed to spawn actor: %v", err)
-	// 	return
-	// }
 
 	aggregatorPID.Address = "127.0.0.1:8081"
 
@@ -222,19 +244,14 @@ func main() {
 	})
 	trainingPID := rootContext.Spawn(trainingProps)
 
+	dataloaderProps := actor.PropsFromProducer(func() actor.Actor {
+		return &DataloaderActor{commActorPID: commPID, trainingPID: trainingPID}
+	})
+	dataloaderPropsPID := rootContext.Spawn(dataloaderProps)
+	rootContext.Send(dataloaderPropsPID, LoadDataMsg{})
+
 	rootContext.Send(aggregatorPID, model.TrainingPIDMsg{TrainingPID: trainingPID})
 
-	// Generisanje i slanje nasumičnih težina za testiranje
-	for i := 0; i < 20; i++ {
-		weights := randomgenerator.RandomWeights()
-		var localWeights model.LocalWeights
-		localWeights.Weights = weights
-		//fmt.Println("Main send weights: ", localWeights.weights)
-		rootContext.Send(trainingPID, localWeights)
-		time.Sleep(1 * time.Second)
-	}
-
-	// Dajemo malo vremena za obradu
 	select {}
 }
 
@@ -257,4 +274,52 @@ func main() {
 // 		}
 // 	}
 // 	return 6331 // Default cluster port for node instances
+// }
+
+// func CompressModel(model Weights) ([]byte, int, error) {
+// 	// Serialize the model to JSON
+// 	jsonData, err := json.Marshal(model)
+// 	if err != nil {
+// 		return nil, 0, fmt.Errorf("failed to marshal model: %w", err)
+// 	}
+
+// 	// Compress the JSON data
+// 	var compressedData bytes.Buffer
+// 	gzipWriter := gzip.NewWriter(&compressedData)
+// 	_, err = gzipWriter.Write(jsonData)
+// 	if err != nil {
+// 		return nil, 0, fmt.Errorf("failed to write compressed data: %w", err)
+// 	}
+// 	err = gzipWriter.Close()
+// 	if err != nil {
+// 		return nil, 0, fmt.Errorf("failed to close gzip writer: %w", err)
+// 	}
+
+// 	return compressedData.Bytes(), len(jsonData), nil
+// }
+
+// // DecompressModel decompresses the gzip byte array back to the model
+// func DecompressModel(compressedData []byte) (model.Weights, int, error) {
+// 	var model model.Weights
+
+// 	// Decompress the data
+// 	gzipReader, err := gzip.NewReader(bytes.NewReader(compressedData))
+// 	if err != nil {
+// 		return model, 0, fmt.Errorf("failed to create gzip reader: %w", err)
+// 	}
+// 	defer gzipReader.Close()
+
+// 	decompressedData := new(bytes.Buffer)
+// 	_, err = decompressedData.ReadFrom(gzipReader)
+// 	if err != nil {
+// 		return model, 0, fmt.Errorf("failed to read decompressed data: %w", err)
+// 	}
+
+// 	// Deserialize the JSON data back to the model
+// 	err = json.Unmarshal(decompressedData.Bytes(), &model)
+// 	if err != nil {
+// 		return model, 0, fmt.Errorf("failed to unmarshal decompressed data: %w", err)
+// 	}
+
+// 	return model, decompressedData.Len(), nil
 // }
