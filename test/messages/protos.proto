@@ -17,8 +17,6 @@ message Weights {
   repeated double fc1_bias = 6;
   repeated FcWeight fc2_weight = 7;
   repeated double fc2_bias = 8;
-  repeated FcWeight fc3_weight = 9;
-  repeated double fc3_bias = 10;
 }
 
 message Conv1Weight {

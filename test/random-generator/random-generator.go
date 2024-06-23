@@ -90,7 +90,5 @@ func RandomWeights() model.Weights {
 		Fc1Bias:     fc1Bias,
 		Fc2Weight:   fc2Weight,
 		Fc2Bias:     fc2Bias,
-		Fc3Weight:   fc3Weight,
-		Fc3Bias:     fc3Bias,
 	}
 }

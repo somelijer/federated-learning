@@ -13,8 +13,6 @@ type Weights struct {
 	Fc1Bias     []float64       `json:"fc1_bias"`
 	Fc2Weight   [][]float64     `json:"fc2_weight"`
 	Fc2Bias     []float64       `json:"fc2_bias"`
-	Fc3Weight   [][]float64     `json:"fc3_weight"`
-	Fc3Bias     []float64       `json:"fc3_bias"`
 }
 type LocalWeights struct {
 	Weights Weights

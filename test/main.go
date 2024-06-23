@@ -180,18 +180,6 @@ func averageWeights(w1, w2 model.Weights, count int) model.Weights {
 		avgWeights.Fc2Bias[i] = (w1.Fc2Bias[i]*float64(count) + w2.Fc2Bias[i]) / float64(count+1)
 	}
 
-	// Prosecanje Fc3Weight
-	for i := range w1.Fc3Weight {
-		for j := range w1.Fc3Weight[i] {
-			avgWeights.Fc3Weight[i][j] = (w1.Fc3Weight[i][j]*float64(count) + w2.Fc3Weight[i][j]) / float64(count+1)
-		}
-	}
-
-	// Prosecanje Fc3Bias
-	for i := range w1.Fc3Bias {
-		avgWeights.Fc3Bias[i] = (w1.Fc3Bias[i]*float64(count) + w2.Fc3Bias[i]) / float64(count+1)
-	}
-
 	return avgWeights
 }
 

@@ -155,21 +155,7 @@ func handleWeightsRequest(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// func handleRemoteWeightsSimulation(w http.ResponseWriter, r *http.Request) {
-// 	if r.Method != http.MethodGet {
-// 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-// 		return
-// 	}
 
-// 	fmt.Println("Sending simulation remote weights")
-
-// 	var remoteWeights model.RemoteWeights
-// 	remoteWeights.Weights = *weights
-// 	//fmt.Println("Main send weights: ", localWeights.weights)
-// 	outTrainctx.Send(outTrainState.commActorPID, remoteWeights)
-
-// 	w.WriteHeader(http.StatusOK)
-// }
 
 func startServer() {
 
@@ -182,7 +168,6 @@ func startServer() {
 	http.HandleFunc("/mnist_data", handleMNISTDataRequest)
 	http.HandleFunc("/weights", handleWeightsRequest)
 	http.HandleFunc("/initial_weights", handleInitialWeightsRequest)
-	// http.HandleFunc("/simulate_remote", handleRemoteWeightsSimulation)
 
 	port := ":8080"
 	fmt.Println("Server listening on port %s...\n", port)

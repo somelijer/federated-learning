@@ -4,12 +4,10 @@ import (
 	"github.com/asynkron/protoactor-go/actor"
 	"main.go/messages"
 	"main.go/model"
-	randomgenerator "main.go/random-generator"
 )
 
 func ToProtoWeights(w model.Weights) *messages.Weights {
 
-	tempWeights := randomgenerator.RandomWeights()
 	// Convert Conv1Weight
 	var protoConv1Weight []*messages.Conv1Weight
 	for _, w1 := range w.Conv1Weight {
@@ -63,8 +61,6 @@ func ToProtoWeights(w model.Weights) *messages.Weights {
 		Fc1Bias:     w.Fc1Bias,
 		Fc2Weight:   convertFcWeight(w.Fc2Weight),
 		Fc2Bias:     w.Fc2Bias,
-		Fc3Weight:   convertFcWeight(tempWeights.Fc1Weight),
-		Fc3Bias:     tempWeights.Fc3Bias,
 	}
 }
 
@@ -104,8 +100,6 @@ func FromProtoWeights(pw *messages.Weights) model.Weights {
 		Fc1Bias:     pw.Fc1Bias,
 		Fc2Weight:   convertProtoFcWeight(pw.Fc2Weight),
 		Fc2Bias:     pw.Fc2Bias,
-		Fc3Weight:   convertProtoFcWeight(pw.Fc3Weight),
-		Fc3Bias:     pw.Fc3Bias,
 	}
 }
 
