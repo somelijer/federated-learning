@@ -79,6 +79,7 @@ func FromProtoWeights(pw *messages.Weights) model.Weights {
 		conv1Weight = append(conv1Weight, w1)
 	}
 
+
 	var conv2Weight [][][][]float64
 	for _, pw1 := range pw.Conv2Weight {
 		var w1 [][][]float64
@@ -89,7 +90,7 @@ func FromProtoWeights(pw *messages.Weights) model.Weights {
 			}
 			w1 = append(w1, w2)
 		}
-		conv1Weight = append(conv1Weight, w1)
+		conv2Weight = append(conv2Weight, w1)
 	}
 
 	// Convert Fc1Weight, Fc2Weight, Fc3Weight
