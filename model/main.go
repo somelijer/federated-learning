@@ -61,7 +61,7 @@ func (state *AggregatorActor) Receive(ctx actor.Context) {
 	switch msg := ctx.Message().(type) {
 	case LocalWeights:
 		fmt.Println("Aggregator received local weights")
-		if(!state.unprocessedRemoteWeights){
+		if(state.unprocessedRemoteWeights){
 			fmt.Println("Agregator calculating avarage weights")
 			state.localWeights.weights = averageWeights(state.localWeights.weights, msg.weights,1)
 			state.unprocessedRemoteWeights = false
