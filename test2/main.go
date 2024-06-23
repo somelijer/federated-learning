@@ -30,15 +30,6 @@ type CommunicationActor struct {
 	otherCommunicationPID *actor.PID
 }
 
-type DataloaderActor struct {
-	commActorPID *actor.PID
-	TrainingPID  *actor.PID
-}
-
-type TrainingPIDMsg struct {
-	TrainingPID *actor.PID
-}
-
 func (state *TrainingActor) Receive(ctx actor.Context) {
 	switch msg := ctx.Message().(type) {
 	case model.LocalWeights:
@@ -172,9 +163,9 @@ func main() {
 	system := actor.NewActorSystem()
 	rootContext := system.Root
 
-	config := remote.Configure("127.0.0.1", 8081)
+	config := remote.Configure("127.0.0.1", 8082)
 
-	provider := automanaged.NewWithConfig(1*time.Second, 6331, "localhost:6331")
+	provider := automanaged.NewWithConfig(1*time.Second, 6332, "localhost:6331")
 	lookup := disthash.New()
 
 	aggregatorProps := actor.PropsFromProducer(func() actor.Actor {
@@ -188,23 +179,17 @@ func main() {
 	// 	return
 	// }
 
-	aggregatorPID.Address = "127.0.0.1:8081"
+	aggregatorPID.Address = "127.0.0.1:8082"
 
-	clusterKind := cluster.NewKind(
-		"Ponger",
-		actor.PropsFromProducer(func() actor.Actor {
-			return &CommunicationActor{}
-		}))
-
-	clusterConfig := cluster.Configure("cluster-example", provider, lookup, config, cluster.WithKinds(clusterKind))
+	clusterConfig := cluster.Configure("cluster-example", provider, lookup, config)
 	c := cluster.New(system, clusterConfig)
 
 	c.StartMember()
 	defer c.Shutdown(false)
 
-	commPID := cluster.GetCluster(system).Get("ponger-1", "Ponger")
+	commPID := cluster.GetCluster(system).Get("ponger-2", "Ponger")
 
-	otherCommPID := cluster.GetCluster(system).Get("ponger-2", "Ponger")
+	otherCommPID := cluster.GetCluster(system).Get("ponger-1", "Ponger")
 
 	aggregatorPIDMsg := &messages.AggregatorPIDMsg{
 		AggregatorPID: converter.ActorToProtoPID(aggregatorPID),
