@@ -39,28 +39,21 @@ class MNIST_Dataset(T.utils.data.Dataset):
 class Net(T.nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.conv1 = T.nn.Conv2d(1, 32, 5)
-        self.conv2 = T.nn.Conv2d(32, 64, 5)
-        self.fc1 = T.nn.Linear(1024, 512)
-        self.fc2 = T.nn.Linear(512, 256)
-        self.fc3 = T.nn.Linear(256, 10)
-        self.pool1 = T.nn.MaxPool2d(2, stride=2)
-        self.pool2 = T.nn.MaxPool2d(2, stride=2)
-        self.drop1 = T.nn.Dropout(0.25)
-        self.drop2 = T.nn.Dropout(0.50)
+        self.conv1 = T.nn.Conv2d(1, 10, kernel_size=5, stride=1)
+        self.conv2 = T.nn.Conv2d(10, 10, kernel_size=5, stride=1)
+        self.pool = T.nn.MaxPool2d(kernel_size=2, stride=2)
+        self.fc1 = T.nn.Linear(4 * 4 * 10, 100)
+        self.fc2 = T.nn.Linear(100, 10)
   
     def forward(self, x):
-        z = T.relu(self.conv1(x))
-        z = self.pool1(z)
-        z = self.drop1(z)
-        z = T.relu(self.conv2(z))
-        z = self.pool2(z)
-        z = z.view(-1, 1024)
-        z = T.relu(self.fc1(z))
-        z = self.drop2(z)
-        z = T.relu(self.fc2(z))
-        z = self.fc3(z)
-        return z
+        x = T.relu(self.conv1(x))  # 24x24x10
+        x = self.pool(x)  # 12x12x10
+        x = T.relu(self.conv2(x))  # 8x8x10
+        x = self.pool(x)  # 4x4x10
+        x = x.view(-1, 4 * 4 * 10)  # flattening
+        x = T.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
 
 def accuracy(model, ds):
     ldr = T.utils.data.DataLoader(ds, batch_size=len(ds), shuffle=False)
@@ -76,7 +69,7 @@ def accuracy(model, ds):
     return acc
 
 def request_initial_weights():
-    url = 'http://localhost:8090/initial_weights'
+    url = 'http://localhost:8080/initial_weights'
     response = requests.get(url)
     if response.status_code == 200:
         weights = response.json()
@@ -97,16 +90,13 @@ def load_weights_to_model(model, weights):
     model.fc1.bias.data = T.tensor(weights['fc1_bias'], dtype=T.float32).to(device)
     model.fc2.weight.data = T.tensor(weights['fc2_weight'], dtype=T.float32).to(device)
     model.fc2.bias.data = T.tensor(weights['fc2_bias'], dtype=T.float32).to(device)
-    model.fc3.weight.data = T.tensor(weights['fc3_weight'], dtype=T.float32).to(device)
-    
 
 def send_weights_to_golang(weights):
-    url = 'http://localhost:8090/weights'  # Assuming the Go server listens on port 8081
+    url = 'http://localhost:8080/weights'  # Assuming the Go server listens on port 8081
     headers = {'Content-Type': 'application/json'}
     response = requests.post(url, data=json.dumps(weights), headers=headers)
     if response.status_code == 200:
         print("Weights sent successfully")
-        #print("conv1 bias: "+str(weights['conv1_bias']))
     else:
         print(f"Error sending weights: {response.status_code}, {response.text}")
 
@@ -119,9 +109,7 @@ def convert_weights_to_dict(model):
         'fc1_weight': model.fc1.weight.detach().cpu().numpy().tolist(),
         'fc1_bias': model.fc1.bias.detach().cpu().numpy().tolist(),
         'fc2_weight': model.fc2.weight.detach().cpu().numpy().tolist(),
-        'fc2_bias': model.fc2.bias.detach().cpu().numpy().tolist(),
-        'fc3_weight': model.fc3.weight.detach().cpu().numpy().tolist(),
-        'fc3_bias': model.fc3.bias.detach().cpu().numpy().tolist()
+        'fc2_bias': model.fc2.bias.detach().cpu().numpy().tolist()
     }
     return weights
 
@@ -131,8 +119,6 @@ def save_model_to_text(model, filename):
         for name, param in model.named_parameters():
             f.write(f"{name}\n")
             f.write(f"{param.detach().cpu().numpy().tolist()}\n")
-
-            import ast
 
 def load_model_from_text(model, filename):
     with open(filename, 'r') as f:
@@ -145,7 +131,6 @@ def load_model_from_text(model, filename):
 
         model.load_state_dict(param_dict)
 
-
 def main():
     np.random.seed(1)
     T.manual_seed(1)
@@ -153,8 +138,8 @@ def main():
     # 1. Fetch MNIST Dataset from GoLang HTTP Server
     print("\nFetching MNIST training Dataset from GoLang HTTP Server")
 
-    num_items = 10 #DEPRECATED
-    url = f'http://localhost:8090/mnist_data?num={num_items}'
+    num_items = 10  # DEPRECATED
+    url = f'http://localhost:8080/mnist_data?num={num_items}'
 
     # Ping the server every second for 15 seconds
     max_retries = 15
@@ -173,8 +158,6 @@ def main():
     if response.status_code != 200:
         print(f"Error fetching data from server: {response.status_code}")
         return
-
-
 
     data = response.json()
     images_data = data['images']
@@ -196,8 +179,6 @@ def main():
     else:
         print("\nInitialising random weights")
 
-
-
     # 3. Train Model
     max_epochs = 2
     epoch_log_interval = 1
@@ -214,7 +195,6 @@ def main():
 
     print("\nStarting training")
     net.train()
-    
 
     for epoch in range(max_epochs):
         epoch_loss = 0
@@ -232,18 +212,13 @@ def main():
             acc = accuracy(net, train_ds)
             print(f"Accuracy on training set: {acc * 100:.2f}%")
 
-   
-
-
     net.eval()
-    if False:
+    if True:
         acc = accuracy(net, train_ds)
         print(f"Accuracy on training set: {acc * 100:.2f}%")
 
     send_weights_to_golang(convert_weights_to_dict(net))
-    save_model_to_text(net,"neural_model/mnist_model.txt")
-
-
+    save_model_to_text(net, "neural_model/mnist_model.txt")
 
     print("\nEnd training script")
 

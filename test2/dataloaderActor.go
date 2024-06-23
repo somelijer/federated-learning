@@ -14,8 +14,8 @@ var (
 	labelsFilePath = "data/train-labels-idx1-ubyte"
 )
 
-var datasetStart int = 2000
-var datasetEnd int = 4000
+var datasetStart int = 20000
+var datasetEnd int = 40000
 
 type LoadDataMsg struct{}
 
