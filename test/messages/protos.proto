@@ -45,6 +45,7 @@ message LocalWeights {
 
 message RemoteWeights {
   Weights weights = 1;
+  string id = 2;
 }
 
 message PingMessage {

@@ -64,7 +64,7 @@ func (state *AggregatorActor) Receive(ctx actor.Context) {
 	switch msg := ctx.Message().(type) {
 	case *messages.LocalWeights:
 		fmt.Println("Aggregator received local weights")
-		if state.unprocessedRemoteWeights {
+		if state.unprocessedRemoteWeights{
 			fmt.Println("Agregator calculating avarage weights")
 			state.localWeights.Weights = averageWeights(state.remoteWeights.Weights, converter.FromProtoWeights(msg.Weights), 1)
 			state.unprocessedRemoteWeights = false
@@ -93,6 +93,7 @@ func (state *CommunicationActor) Receive(ctx actor.Context) {
 
 		remoteWeights := &messages.RemoteWeights{
 			Weights: msg.Weights,
+			Id: "nzm lol",
 		}
 
 		fmt.Println("Send weights to other systems")
@@ -109,6 +110,7 @@ func (state *CommunicationActor) Receive(ctx actor.Context) {
 		fmt.Println("RECIEVED WEIGHTS FRON ANOTHER NODE")
 		remoteWeights := &messages.RemoteWeights{
 			Weights: msg.Weights,
+			Id: "nzm lol",
 		}
 		ctx.Send(state.aggregatorPID, remoteWeights)
 
@@ -116,6 +118,7 @@ func (state *CommunicationActor) Receive(ctx actor.Context) {
 		state.aggregatorPID = converter.ProtoToActorPID(msg.AggregatorPID)
 	case *messages.OtherCommunicationPIDMsg:
 		state.otherCommunicationPID = converter.ProtoToActorPID(msg.OtherCommPID)
+
 	}
 }
 
@@ -177,18 +180,6 @@ func averageWeights(w1, w2 model.Weights, count int) model.Weights {
 	// Prosecanje Fc2Bias
 	for i := range w1.Fc2Bias {
 		avgWeights.Fc2Bias[i] = (w1.Fc2Bias[i]*float64(count) + w2.Fc2Bias[i]) / float64(count+1)
-	}
-
-	// Prosecanje Fc3Weight
-	for i := range w1.Fc3Weight {
-		for j := range w1.Fc3Weight[i] {
-			avgWeights.Fc3Weight[i][j] = (w1.Fc3Weight[i][j]*float64(count) + w2.Fc3Weight[i][j]) / float64(count+1)
-		}
-	}
-
-	// Prosecanje Fc3Bias
-	for i := range w1.Fc3Bias {
-		avgWeights.Fc3Bias[i] = (w1.Fc3Bias[i]*float64(count) + w2.Fc3Bias[i]) / float64(count+1)
 	}
 
 	return avgWeights

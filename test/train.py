@@ -82,24 +82,6 @@ def request_initial_weights():
         return None
 
 def load_weights_to_model(model, weights):
-    with open('out.txt', 'w') as f:
-        f.write('conv1_weight shape:\n')
-        f.write(f"{T.tensor(weights['conv1_weight'], dtype=T.float32).shape}\n")
-        f.write('conv1_bias shape:\n')
-        f.write(f"{T.tensor(weights['conv1_bias'], dtype=T.float32).shape}\n")
-        f.write('conv2_weight shape:\n')
-        f.write(f"{T.tensor(weights['conv2_weight'], dtype=T.float32).shape}\n")
-        f.write('conv2_bias shape:\n')
-        f.write(f"{T.tensor(weights['conv2_bias'], dtype=T.float32).shape}\n")
-        f.write('fc1_weight shape:\n')
-        f.write(f"{T.tensor(weights['fc1_weight'], dtype=T.float32).shape}\n")
-        f.write('fc1_bias shape:\n')
-        f.write(f"{T.tensor(weights['fc1_bias'], dtype=T.float32).shape}\n")
-        f.write('fc2_weight shape:\n')
-        f.write(f"{T.tensor(weights['fc2_weight'], dtype=T.float32).shape}\n")
-        f.write('fc2_bias shape:\n')
-        f.write(f"{T.tensor(weights['fc2_bias'], dtype=T.float32).shape}\n")
-
     model.conv1.weight.data = T.tensor(weights['conv1_weight'], dtype=T.float32).to(device)
     model.conv1.bias.data = T.tensor(weights['conv1_bias'], dtype=T.float32).to(device)
     model.conv2.weight.data = T.tensor(weights['conv2_weight'], dtype=T.float32).to(device)

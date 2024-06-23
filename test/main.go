@@ -93,6 +93,7 @@ func (state *CommunicationActor) Receive(ctx actor.Context) {
 
 		remoteWeights := &messages.RemoteWeights{
 			Weights: msg.Weights,
+			Id: "nzm lol",
 		}
 
 		fmt.Println("Send weights to other systems")
@@ -107,10 +108,11 @@ func (state *CommunicationActor) Receive(ctx actor.Context) {
 
 	case *messages.RemoteWeights:
 		fmt.Println("RECIEVED WEIGHTS FRON ANOTHER NODE")
-		//remoteWeights := &messages.RemoteWeights{
-		//	Weights: msg.Weights,
-		//}
-		//ctx.Send(state.aggregatorPID, remoteWeights)
+		remoteWeights := &messages.RemoteWeights{
+			Weights: msg.Weights,
+			Id: "nzm lol",
+		}
+		ctx.Send(state.aggregatorPID, remoteWeights)
 
 	case *messages.AggregatorPIDMsg:
 		state.aggregatorPID = converter.ProtoToActorPID(msg.AggregatorPID)
