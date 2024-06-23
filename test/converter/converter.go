@@ -54,8 +54,8 @@ func ToProtoWeights(w model.Weights) *messages.Weights {
 
 	return &messages.Weights{
 		Conv1Weight: protoConv1Weight,
-		Conv2Weight: protoConv2Weight,
 		Conv1Bias:   w.Conv1Bias,
+		Conv2Weight: protoConv2Weight,
 		Conv2Bias:   w.Conv2Bias,
 		Fc1Weight:   convertFcWeight(w.Fc1Weight),
 		Fc1Bias:     w.Fc1Bias,
@@ -68,6 +68,19 @@ func FromProtoWeights(pw *messages.Weights) model.Weights {
 	// Convert Conv1Weight
 	var conv1Weight [][][][]float64
 	for _, pw1 := range pw.Conv1Weight {
+		var w1 [][][]float64
+		for _, pw2 := range pw1.Conv1Weight {
+			var w2 [][]float64
+			for _, pw3 := range pw2.Conv1Weight {
+				w2 = append(w2, []float64{pw3.Conv1Weight})
+			}
+			w1 = append(w1, w2)
+		}
+		conv1Weight = append(conv1Weight, w1)
+	}
+
+	var conv2Weight [][][][]float64
+	for _, pw1 := range pw.Conv2Weight {
 		var w1 [][][]float64
 		for _, pw2 := range pw1.Conv1Weight {
 			var w2 [][]float64
@@ -95,6 +108,7 @@ func FromProtoWeights(pw *messages.Weights) model.Weights {
 	return model.Weights{
 		Conv1Weight: conv1Weight,
 		Conv1Bias:   pw.Conv1Bias,
+		Conv2Weight: conv2Weight,
 		Conv2Bias:   pw.Conv2Bias,
 		Fc1Weight:   convertProtoFcWeight(pw.Fc1Weight),
 		Fc1Bias:     pw.Fc1Bias,

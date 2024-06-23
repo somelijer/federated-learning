@@ -10,8 +10,8 @@ option go_package = "test/messages";
 
 message Weights {
   repeated Conv1Weight conv1_weight = 1;
-  repeated Conv1Weight conv2_weight = 2;
-  repeated double conv1_bias = 3;
+  repeated double conv1_bias = 2;
+  repeated Conv1Weight conv2_weight = 3;
   repeated double conv2_bias = 4;
   repeated FcWeight fc1_weight = 5;
   repeated double fc1_bias = 6;

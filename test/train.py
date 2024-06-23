@@ -82,6 +82,24 @@ def request_initial_weights():
         return None
 
 def load_weights_to_model(model, weights):
+    with open('out.txt', 'w') as f:
+            f.write('conv1_weight:\n')
+            f.write(f"{weights['conv1_weight']}\n")
+            f.write('conv1_bias:\n')
+            f.write(f"{weights['conv1_bias']}\n")
+            f.write('conv2_weight:\n')
+            f.write(f"{weights['conv2_weight']}\n")
+            f.write('conv2_bias:\n')
+            f.write(f"{weights['conv2_bias']}\n")
+            f.write('fc1_weight:\n')
+            f.write(f"{weights['fc1_weight']}\n")
+            f.write('fc1_bias:\n')
+            f.write(f"{weights['fc1_bias']}\n")
+            f.write('fc2_weight:\n')
+            f.write(f"{weights['fc2_weight']}\n")
+            f.write('fc2_bias:\n')
+            f.write(f"{weights['fc2_bias']}\n")
+
     model.conv1.weight.data = T.tensor(weights['conv1_weight'], dtype=T.float32).to(device)
     model.conv1.bias.data = T.tensor(weights['conv1_bias'], dtype=T.float32).to(device)
     model.conv2.weight.data = T.tensor(weights['conv2_weight'], dtype=T.float32).to(device)
