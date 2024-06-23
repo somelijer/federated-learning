@@ -9,9 +9,9 @@ option go_package = "test/messages";
 
 
 message Weights {
-  repeated Conv1Weight conv1_weight = 1;
+  repeated ConvWeight conv1_weight = 1;
   repeated double conv1_bias = 2;
-  repeated Conv1Weight conv2_weight = 3;
+  repeated ConvWeight conv2_weight = 3;
   repeated double conv2_bias = 4;
   repeated FcWeight fc1_weight = 5;
   repeated double fc1_bias = 6;
@@ -19,16 +19,16 @@ message Weights {
   repeated double fc2_bias = 8;
 }
 
-message Conv1Weight {
-  repeated Conv1Weight2 conv1_weight = 1;
+message ConvWeight {
+    repeated Kernel kernel = 1;
 }
 
-message Conv1Weight2 {
-  repeated Conv1Weight3 conv1_weight = 1;
+message Kernel {
+    repeated Row row = 1;
 }
 
-message Conv1Weight3 {
-  double conv1_weight = 1;
+message Row {
+    repeated double value = 1;
 }
 
 message FcWeight {
