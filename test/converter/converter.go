@@ -9,9 +9,7 @@ import (
 
 func ToProtoWeights(w model.Weights) *messages.Weights {
 
-	tempSloj := w
 	tempWeights := randomgenerator.RandomWeights()
-	w = tempWeights
 	// Convert Conv1Weight
 	var protoConv1Weight []*messages.Conv1Weight
 	for _, w1 := range w.Conv1Weight {
@@ -61,12 +59,12 @@ func ToProtoWeights(w model.Weights) *messages.Weights {
 		Conv2Weight: protoConv2Weight,
 		Conv1Bias:   w.Conv1Bias,
 		Conv2Bias:   w.Conv2Bias,
-		Fc1Weight:   convertFcWeight(tempSloj.Fc1Weight),
+		Fc1Weight:   convertFcWeight(w.Fc1Weight),
 		Fc1Bias:     w.Fc1Bias,
 		Fc2Weight:   convertFcWeight(w.Fc2Weight),
 		Fc2Bias:     w.Fc2Bias,
-		Fc3Weight:   convertFcWeight(w.Fc3Weight),
-		Fc3Bias:     w.Fc3Bias,
+		Fc3Weight:   convertFcWeight(tempWeights.Fc1Weight),
+		Fc3Bias:     tempWeights.Fc3Bias,
 	}
 }
 

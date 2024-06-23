@@ -15,7 +15,7 @@ var (
 )
 
 var datasetStart int = 0
-var datasetEnd int = 20000
+var datasetEnd int = 2000
 
 type LoadDataMsg struct{}
 

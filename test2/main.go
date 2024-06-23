@@ -62,19 +62,20 @@ type CommunicationActor struct {
 
 func (state *AggregatorActor) Receive(ctx actor.Context) {
 	switch msg := ctx.Message().(type) {
-	case model.LocalWeights:
+	case *messages.LocalWeights:
 		fmt.Println("Aggregator received local weights")
 		if state.unprocessedRemoteWeights {
 			fmt.Println("Agregator calculating avarage weights")
-			state.localWeights.Weights = averageWeights(state.remoteWeights.Weights, msg.Weights, 1)
+			state.localWeights.Weights = averageWeights(state.remoteWeights.Weights, converter.FromProtoWeights(msg.Weights), 1)
 			state.unprocessedRemoteWeights = false
 		} else {
+			var localWeights model.LocalWeights
+			localWeights.Weights = converter.FromProtoWeights(msg.Weights)
+			state.localWeights = localWeights
 			fmt.Println("No new remote weights")
 		}
-		var localWeights model.LocalWeights
-		localWeights.Weights = msg.Weights
-		ctx.Send(state.trainingPID, localWeights)
-	case messages.RemoteWeights:
+		ctx.Send(state.trainingPID, state.localWeights)
+	case *messages.RemoteWeights:
 		fmt.Println("Aggregator received remote weights")
 		state.unprocessedRemoteWeights = true
 		state.remoteWeights.Weights = converter.FromProtoWeights(msg.Weights)
@@ -94,18 +95,21 @@ func (state *CommunicationActor) Receive(ctx actor.Context) {
 			Weights: msg.Weights,
 		}
 
-		time.Sleep(1 * time.Second)
+		fmt.Println("Send weights to other systems")
 		//Slanje tezina ostalim clanovima klastera
 		ctx.Send(state.otherCommunicationPID, remoteWeights)
+		localWeights := &messages.LocalWeights{
+			Weights: msg.Weights,
+		}
+		ctx.Send(state.aggregatorPID, localWeights)
 
-		fmt.Println("Send weights to other systems")
+
 
 	case *messages.RemoteWeights:
 		fmt.Println("RECIEVED WEIGHTS FRON ANOTHER NODE")
 		remoteWeights := &messages.RemoteWeights{
 			Weights: msg.Weights,
 		}
-		time.Sleep(1 * time.Second)
 		ctx.Send(state.aggregatorPID, remoteWeights)
 
 	case *messages.AggregatorPIDMsg:
