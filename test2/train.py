@@ -69,7 +69,7 @@ def accuracy(model, ds):
     return acc
 
 def request_initial_weights():
-    url = 'http://localhost:8080/initial_weights'
+    url = 'http://localhost:8090/initial_weights'
     response = requests.get(url)
     if response.status_code == 200:
         weights = response.json()
@@ -92,7 +92,7 @@ def load_weights_to_model(model, weights):
     model.fc2.bias.data = T.tensor(weights['fc2_bias'], dtype=T.float32).to(device)
 
 def send_weights_to_golang(weights):
-    url = 'http://localhost:8080/weights'  # Assuming the Go server listens on port 8081
+    url = 'http://localhost:8090/weights'  # Assuming the Go server listens on port 8081
     headers = {'Content-Type': 'application/json'}
     response = requests.post(url, data=json.dumps(weights), headers=headers)
     if response.status_code == 200:
@@ -139,7 +139,7 @@ def main():
     print("\nFetching MNIST training Dataset from GoLang HTTP Server")
 
     num_items = 10  # DEPRECATED
-    url = f'http://localhost:8080/mnist_data?num={num_items}'
+    url = f'http://localhost:8090/mnist_data?num={num_items}'
 
     # Ping the server every second for 15 seconds
     max_retries = 15

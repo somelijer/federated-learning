@@ -71,7 +71,7 @@ func (state *TrainingActor) Receive(ctx actor.Context) {
 
 func runPythonScript(wg *sync.WaitGroup) {
 	defer wg.Done()
-	cmd := exec.Command("C:/ProgramData/anaconda3/python.exe", "train.py")
+	cmd := exec.Command("python", "train.py")
 
 	// Combine stdout and stderr
 	cmd.Stdout = log.Writer()
