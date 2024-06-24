@@ -1,0 +1,16 @@
+conv1_weight shape:
+torch.Size([10, 1, 5, 5])
+conv1_bias shape:
+torch.Size([10])
+conv2_weight shape:
+torch.Size([10, 10, 5, 5])
+conv2_bias shape:
+torch.Size([10])
+fc1_weight shape:
+torch.Size([100, 160])
+fc1_bias shape:
+torch.Size([100])
+fc2_weight shape:
+torch.Size([10, 100])
+fc2_bias shape:
+torch.Size([10])
