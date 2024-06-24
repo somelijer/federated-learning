@@ -26,7 +26,6 @@ type CommunicationActor struct {
 	otherCommunicationPID *actor.PID
 }
 
-
 func (state *AggregatorActor) Receive(ctx actor.Context) {
 	switch msg := ctx.Message().(type) {
 	case *messages.LocalWeights:
@@ -56,14 +55,25 @@ func (state *AggregatorActor) Receive(ctx actor.Context) {
 func (state *CommunicationActor) Receive(ctx actor.Context) {
 	switch msg := ctx.Message().(type) {
 	case *messages.LocalWeights:
-		fmt.Println("seed: Communication actor received weights from training actor")
+		if state.aggregatorPID.Address == "127.0.0.1:8081" {
+			fmt.Println("seed: Communication actor received weights from training actor")
+		}
+		if state.aggregatorPID.Address == "127.0.0.1:8082" {
+			fmt.Println("node: Communication actor received weights from training actor")
+		}
 
 		remoteWeights := &messages.RemoteWeights{
 			Weights: msg.Weights,
-			Id: "nzm lol",
+			Id:      "nzm lol",
 		}
 
-		fmt.Println("seed: Send weights to other systems")
+		if state.aggregatorPID.Address == "127.0.0.1:8081" {
+			fmt.Println("seed: Send weights to other systems")
+		}
+		if state.aggregatorPID.Address == "127.0.0.1:8082" {
+			fmt.Println("node: Send weights to other systems")
+		}
+
 		//Slanje tezina ostalim clanovima klastera
 		ctx.Send(state.otherCommunicationPID, remoteWeights)
 		localWeights := &messages.LocalWeights{
@@ -71,13 +81,17 @@ func (state *CommunicationActor) Receive(ctx actor.Context) {
 		}
 		ctx.Send(state.aggregatorPID, localWeights)
 
-
-
 	case *messages.RemoteWeights:
-		fmt.Println("seed: RECIEVED WEIGHTS FROM ANOTHER NODE")
+		if state.aggregatorPID.Address == "127.0.0.1:8081" {
+			fmt.Println("seed: RECIEVED WEIGHTS FROM ANOTHER NODE")
+		}
+		if state.aggregatorPID.Address == "127.0.0.1:8082" {
+			fmt.Println("node: RECIEVED WEIGHTS FROM ANOTHER NODE")
+		}
+
 		remoteWeights := &messages.RemoteWeights{
 			Weights: msg.Weights,
-			Id: "nzm lol",
+			Id:      "nzm lol",
 		}
 		ctx.Send(state.aggregatorPID, remoteWeights)
 
