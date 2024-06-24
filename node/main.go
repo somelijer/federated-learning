@@ -14,11 +14,14 @@ import (
 	"main.go/model"
 )
 
+var endProgram bool = false
+
 type AggregatorActor struct {
 	localWeights             model.LocalWeights
 	remoteWeights            model.RemoteWeights
 	unprocessedRemoteWeights bool
 	trainingPID              *actor.PID
+	epochCounter             int
 }
 
 type CommunicationActor struct {
@@ -31,6 +34,16 @@ func (state *AggregatorActor) Receive(ctx actor.Context) {
 	switch msg := ctx.Message().(type) {
 	case *messages.LocalWeights:
 		fmt.Println("Aggregator received local weights")
+
+		state.epochCounter++
+		if state.epochCounter >= 3 {
+			fmt.Println("Reached max epochs, shutting down...")
+			ctx.ActorSystem().Shutdown()
+			endProgram = true
+			return
+		}else{
+			fmt.Println("Epoch: ",state.epochCounter)
+		}
 		if state.unprocessedRemoteWeights{
 			fmt.Println("Agregator calculating avarage weights")
 			state.localWeights.Weights = averageWeights(state.remoteWeights.Weights, converter.FromProtoWeights(msg.Weights), 1)
@@ -165,7 +178,10 @@ func main() {
 	lookup := disthash.New()
 
 	aggregatorProps := actor.PropsFromProducer(func() actor.Actor {
-		return &AggregatorActor{unprocessedRemoteWeights: false}
+		return &AggregatorActor{
+			unprocessedRemoteWeights: false,
+			epochCounter: 0,
+		}
 	})
 
 	aggregatorPID := rootContext.Spawn(aggregatorProps)
@@ -211,5 +227,9 @@ func main() {
 
 	rootContext.Send(aggregatorPID, model.TrainingPIDMsg{TrainingPID: trainingPID})
 
-	select {}
+	for !endProgram {
+		time.Sleep(1 * time.Second)
+	}
+
+	fmt.Println("Program terminated.")
 }

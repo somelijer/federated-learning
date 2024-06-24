@@ -51,7 +51,6 @@ func (state *TrainingActor) Receive(ctx actor.Context) {
 		go runPythonScript(&wg)
 
 		wg.Wait()
-		fmt.Println("Python script has finished executing.")
 		//ctx.Send(state.commActorPID, msg)
 	case model.LocalWeights:
 		fmt.Println("Training Actor received weights")
